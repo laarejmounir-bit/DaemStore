@@ -633,7 +633,7 @@ function Home() {
       setTiktokProfile(null);
 
       try {
-        const response = await fetch(`/api/tiktok/user?uniqueId=${username}`);
+        const response = await fetch(`/api/tiktok/user?uniqueId=${encodeURIComponent(username)}`);
         const contentType = response.headers.get('content-type') || '';
         
         let data: any = null;
@@ -660,7 +660,7 @@ function Home() {
       } finally {
         setIsTiktokLoading(false);
       }
-    }, 800);
+    }, 600);
 
     return () => clearTimeout(timer);
   }, [targetLink, selectedOption]);
@@ -1164,14 +1164,23 @@ function Home() {
                                 )}
                               </div>
                               <div className="flex items-center gap-3 text-slate-400 text-xs">
-                                <div className="flex items-center gap-1">
-                                  <Users className="w-3 h-3 text-emerald-500" />
-                                  <span className="font-bold">{formatFollowers(tiktokProfile.stats?.followerCount)}</span> متابع
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <Heart className="w-3 h-3 text-purple-500" />
-                                  <span className="font-bold">{formatFollowers(tiktokProfile.stats?.heartCount ?? tiktokProfile.stats?.heart ?? tiktokProfile.stats?.followingCount)}</span> {tiktokProfile.stats?.heartCount !== undefined ? 'إعجاب' : 'يتابع'}
-                                </div>
+                                {tiktokProfile.stats && tiktokProfile.stats.followerCount !== null && tiktokProfile.stats.followerCount !== undefined ? (
+                                  <>
+                                    <div className="flex items-center gap-1">
+                                      <Users className="w-3 h-3 text-emerald-500" />
+                                      <span className="font-bold">{formatFollowers(tiktokProfile.stats?.followerCount)}</span> متابع
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <Heart className="w-3 h-3 text-purple-500" />
+                                      <span className="font-bold">{formatFollowers(tiktokProfile.stats?.heartCount ?? tiktokProfile.stats?.heart ?? tiktokProfile.stats?.followingCount)}</span> {tiktokProfile.stats?.heartCount !== undefined ? 'إعجاب' : 'يتابع'}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="flex items-center gap-1 text-emerald-400 font-medium">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                    <span>تم التثبت من صحة الحساب</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </motion.div>

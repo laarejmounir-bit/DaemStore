@@ -91,11 +91,16 @@ export async function getTikTokUserInfo(uniqueId: string) {
           'User-Agent': ua,
           'Accept-Language': 'ar-SA,ar;q=0.9,en-US;q=0.8,en;q=0.7',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'none',
+          'Sec-Fetch-User': '?1',
+          'Upgrade-Insecure-Requests': '1',
           'Cache-Control': 'no-cache'
         }
       });
 
-      if (webRes.ok) {
+      if (webRes.ok && !webRes.url.includes('/login')) {
         const html = await webRes.text();
         let userInfo: any = null;
 
@@ -188,8 +193,9 @@ export async function getTikTokUserInfo(uniqueId: string) {
   try {
     const apiRes = await fetch(`https://www.tiktok.com/api/user/detail/?uniqueId=${encodeURIComponent(sanitizedUniqueId)}`, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Referer': 'https://www.tiktok.com/'
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Mobile/15E148 Safari/604.1',
+        'Referer': `https://www.tiktok.com/@${encodeURIComponent(sanitizedUniqueId)}`,
+        'Accept': 'application/json, text/plain, */*'
       }
     });
 
@@ -206,6 +212,34 @@ export async function getTikTokUserInfo(uniqueId: string) {
     }
   } catch (err) {
     console.warn("TikTok public API failed:", err);
+  }
+
+  // Strategy 3: TikTok Official oEmbed API (Guaranteed Public Account Check)
+  try {
+    const oembedRes = await fetch(`https://www.tiktok.com/oembed?url=https://www.tiktok.com/@${encodeURIComponent(sanitizedUniqueId)}`);
+    if (oembedRes.ok) {
+      const odata = await oembedRes.json();
+      if (odata && odata.author_name) {
+        return {
+          statusCode: 0,
+          userInfo: {
+            user: {
+              uniqueId: sanitizedUniqueId,
+              nickname: odata.author_name,
+              avatarThumb: `https://ui-avatars.com/api/?name=${encodeURIComponent(odata.author_name)}&background=10b981&color=fff`,
+              avatarLarger: `https://ui-avatars.com/api/?name=${encodeURIComponent(odata.author_name)}&background=10b981&color=fff`,
+              verified: false
+            },
+            stats: {
+              followerCount: null,
+              heartCount: null
+            }
+          }
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("TikTok oEmbed failed:", err);
   }
 
   // Strategy 3: RapidAPI (if RAPIDAPI_KEY is configured in env)
