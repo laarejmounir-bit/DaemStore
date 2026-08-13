@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Cairo", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Cairo", "Space Grotesk", sans-serif;
+}
+
+@layer base {
+  body {
+    background-color: #0f172a; /* Deep Black / Dark Grey */
+    color: #ffffff;
+  }
+}
+
+@keyframes scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes orange-pulse {
+  0%, 100% { 
+    border-color: rgba(249, 115, 22, 0.4); 
+    box-shadow: 0 0 10px rgba(249, 115, 22, 0.1); 
+  }
+  50% { 
+    border-color: rgba(249, 115, 22, 1); 
+    box-shadow: 0 0 25px rgba(249, 115, 22, 0.5); 
+  }
+}
+
+@keyframes violet-pulse {
+  0%, 100% { 
+    border-color: rgba(139, 92, 246, 0.4); 
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.1); 
+  }
+  50% { 
+    border-color: rgba(139, 92, 246, 1); 
+    box-shadow: 0 0 25px rgba(139, 92, 246, 0.5); 
+  }
+}
+
+.animate-orange-pulse {
+  animation: orange-pulse 3s ease-in-out infinite;
+}
+
+.animate-violet-pulse {
+  animation: violet-pulse 3s ease-in-out infinite;
+}
+
+.animate-scroll {
+  animation: scroll 60s linear infinite;
+}

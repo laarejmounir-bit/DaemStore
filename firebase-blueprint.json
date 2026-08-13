@@ -1,0 +1,107 @@
+{
+  "entities": {
+    "Cart": {
+      "title": "Cart",
+      "description": "A shopping cart for a customer",
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "price": { "type": "number" },
+              "quantity": { "type": "string" },
+              "details": { "type": "array", "items": { "type": "string" } },
+              "targetLink": { "type": "string" }
+            }
+          }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["items", "updatedAt"]
+    },
+    "Service": {
+      "title": "Service",
+      "description": "A service offered by the platform (e.g., TikTok followers)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "iconName": { "type": "string" },
+        "color": { "type": "string" },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "iconName": { "type": "string" },
+              "plans": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "quantity": { "type": "string" },
+                    "price": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "required": ["id", "name", "iconName"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "A customer order",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerEmail": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["جديد", "قيد التنفيذ", "مكتمل", "ملغي"] },
+        "items": { "type": "array", "items": { "type": "object" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "totalAmount", "status", "createdAt"]
+    },
+    "User": {
+      "title": "User",
+      "description": "A customer or admin user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "email", "role"]
+    }
+  },
+  "firestore": {
+    "/carts/{cartId}": {
+      "schema": "Cart",
+      "description": "Collection of shopping carts indexed by user ID or session ID"
+    },
+    "/services/{serviceId}": {
+      "schema": "Service",
+      "description": "Collection of services"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Collection of orders"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of users"
+    }
+  }
+}
