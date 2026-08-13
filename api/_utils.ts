@@ -79,86 +79,94 @@ export async function getTikTokUserInfo(uniqueId: string) {
     return { statusCode: 400, error: "uniqueId is required" };
   }
 
-  // Strategy 1: Direct TikTok Web Scraping (No API key required)
-  try {
-    const webRes = await fetch(`https://www.tiktok.com/@${encodeURIComponent(sanitizedUniqueId)}`, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept-Language': 'ar-SA,ar;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Cache-Control': 'no-cache'
-      }
-    });
+  // Strategy 1: Direct TikTok Web Scraping with User-Agent Fallbacks
+  const userAgents = [
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+  ];
 
-    if (webRes.ok) {
-      const html = await webRes.text();
-      let userInfo: any = null;
-
-      // Pattern 1: __UNIVERSAL_DATA_FOR_REHYDRATION__
-      const match1 = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application\/json">(.*?)<\/script>/s);
-      if (match1 && match1[1]) {
-        try {
-          const parsed = JSON.parse(match1[1]);
-          userInfo = parsed['__DEFAULT_SCOPE__']?.['webapp.user-detail']?.userInfo;
-        } catch (e) {
-          console.warn("Parse error for __UNIVERSAL_DATA_FOR_REHYDRATION__:", e);
+  for (const ua of userAgents) {
+    try {
+      const webRes = await fetch(`https://www.tiktok.com/@${encodeURIComponent(sanitizedUniqueId)}`, {
+        headers: {
+          'User-Agent': ua,
+          'Accept-Language': 'ar-SA,ar;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'Cache-Control': 'no-cache'
         }
-      }
+      });
 
-      // Pattern 2: SIGI_STATE
-      if (!userInfo || !userInfo.user) {
-        const match2 = html.match(/<script id="SIGI_STATE" type="application\/json">(.*?)<\/script>/s);
-        if (match2 && match2[1]) {
+      if (webRes.ok) {
+        const html = await webRes.text();
+        let userInfo: any = null;
+
+        // Pattern 1: __UNIVERSAL_DATA_FOR_REHYDRATION__
+        const match1 = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application\/json">(.*?)<\/script>/s);
+        if (match1 && match1[1]) {
           try {
-            const parsed = JSON.parse(match2[1]);
-            const UserModule = parsed.UserModule || {};
-            const users = UserModule.users || {};
-            const stats = UserModule.stats || {};
-            const userObj = users[sanitizedUniqueId] || Object.values(users)[0];
-            const statsObj = stats[sanitizedUniqueId] || Object.values(stats)[0];
-            if (userObj) {
-              userInfo = { user: userObj, stats: statsObj || {} };
-            }
+            const parsed = JSON.parse(match1[1]);
+            userInfo = parsed['__DEFAULT_SCOPE__']?.['webapp.user-detail']?.userInfo;
           } catch (e) {
-            console.warn("Parse error for SIGI_STATE:", e);
+            console.warn("Parse error for __UNIVERSAL_DATA_FOR_REHYDRATION__:", e);
           }
         }
-      }
 
-      // Pattern 3: Direct Regex Fallback on HTML
-      if (!userInfo || !userInfo.user) {
-        const avatarMatch = html.match(/"avatarLarger":"([^"]+)"/) || html.match(/"avatarThumb":"([^"]+)"/) || html.match(/"avatarMedium":"([^"]+)"/);
-        const nicknameMatch = html.match(/"nickname":"([^"]+)"/);
-        const followerMatch = html.match(/"followerCount":(\d+)/);
-        const heartMatch = html.match(/"heartCount":(\d+)/) || html.match(/"heart":(\d+)/);
-        const verifiedMatch = html.match(/"verified":(true|false)/);
-
-        if (avatarMatch || followerMatch || nicknameMatch) {
-          userInfo = {
-            user: {
-              uniqueId: sanitizedUniqueId,
-              nickname: nicknameMatch ? nicknameMatch[1] : sanitizedUniqueId,
-              avatarThumb: avatarMatch ? avatarMatch[1] : '',
-              avatarLarger: avatarMatch ? avatarMatch[1] : '',
-              verified: verifiedMatch ? verifiedMatch[1] === 'true' : false
-            },
-            stats: {
-              followerCount: followerMatch ? parseInt(followerMatch[1], 10) : 0,
-              heartCount: heartMatch ? parseInt(heartMatch[1], 10) : 0
+        // Pattern 2: SIGI_STATE
+        if (!userInfo || !userInfo.user) {
+          const match2 = html.match(/<script id="SIGI_STATE" type="application\/json">(.*?)<\/script>/s);
+          if (match2 && match2[1]) {
+            try {
+              const parsed = JSON.parse(match2[1]);
+              const UserModule = parsed.UserModule || {};
+              const users = UserModule.users || {};
+              const stats = UserModule.stats || {};
+              const userObj = users[sanitizedUniqueId] || Object.values(users)[0];
+              const statsObj = stats[sanitizedUniqueId] || Object.values(stats)[0];
+              if (userObj) {
+                userInfo = { user: userObj, stats: statsObj || {} };
+              }
+            } catch (e) {
+              console.warn("Parse error for SIGI_STATE:", e);
             }
-          };
+          }
+        }
+
+        // Pattern 3: Direct Regex Fallback on HTML
+        if (!userInfo || !userInfo.user) {
+          const avatarMatch = html.match(/"avatarLarger":"([^"]+)"/) || html.match(/"avatarThumb":"([^"]+)"/) || html.match(/"avatarMedium":"([^"]+)"/);
+          const nicknameMatch = html.match(/"nickname":"([^"]+)"/);
+          const followerMatch = html.match(/"followerCount":(\d+)/);
+          const heartMatch = html.match(/"heartCount":(\d+)/) || html.match(/"heart":(\d+)/);
+          const verifiedMatch = html.match(/"verified":(true|false)/);
+
+          if (avatarMatch || followerMatch || nicknameMatch) {
+            userInfo = {
+              user: {
+                uniqueId: sanitizedUniqueId,
+                nickname: nicknameMatch ? nicknameMatch[1] : sanitizedUniqueId,
+                avatarThumb: avatarMatch ? avatarMatch[1] : '',
+                avatarLarger: avatarMatch ? avatarMatch[1] : '',
+                verified: verifiedMatch ? verifiedMatch[1] === 'true' : false
+              },
+              stats: {
+                followerCount: followerMatch ? parseInt(followerMatch[1], 10) : 0,
+                heartCount: heartMatch ? parseInt(heartMatch[1], 10) : 0
+              }
+            };
+          }
+        }
+
+        if (userInfo && userInfo.user) {
+          if (userInfo.user.avatarThumb) userInfo.user.avatarThumb = cleanTikTokUrl(userInfo.user.avatarThumb);
+          if (userInfo.user.avatarLarger) userInfo.user.avatarLarger = cleanTikTokUrl(userInfo.user.avatarLarger);
+          if (userInfo.user.avatarMedium) userInfo.user.avatarMedium = cleanTikTokUrl(userInfo.user.avatarMedium);
+          return { statusCode: 0, userInfo };
         }
       }
-
-      if (userInfo && userInfo.user) {
-        if (userInfo.user.avatarThumb) userInfo.user.avatarThumb = cleanTikTokUrl(userInfo.user.avatarThumb);
-        if (userInfo.user.avatarLarger) userInfo.user.avatarLarger = cleanTikTokUrl(userInfo.user.avatarLarger);
-        if (userInfo.user.avatarMedium) userInfo.user.avatarMedium = cleanTikTokUrl(userInfo.user.avatarMedium);
-        return { statusCode: 0, userInfo };
-      }
+    } catch (err) {
+      console.warn(`TikTok web scraping with UA failed:`, err);
     }
-  } catch (err) {
-    console.warn("Direct TikTok web scraping failed:", err);
   }
 
   // Strategy 2: TikTok Public Web API

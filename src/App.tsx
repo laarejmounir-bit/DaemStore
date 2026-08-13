@@ -1181,7 +1181,7 @@ function Home() {
                                 onError={(e) => {
                                   const target = e.currentTarget;
                                   const directUrl = tiktokProfile.user?.avatarLarger || tiktokProfile.user?.avatarThumb;
-                                  if (directUrl && !target.src.includes(directUrl) && !target.src.includes('ui-avatars.com')) {
+                                  if (directUrl && target.src.includes('/api/proxy-image')) {
                                     target.src = directUrl;
                                   } else {
                                     target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(tiktokProfile.user?.nickname || 'TikTok')}&background=10b981&color=fff`;
@@ -1198,9 +1198,15 @@ function Home() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-0.5">
                                 <h4 className="text-white font-bold truncate">{tiktokProfile.user?.nickname || tiktokProfile.user?.uniqueId || 'حساب تيك توك'}</h4>
-                                <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-emerald-500/20 flex items-center gap-1">
-                                  <CheckCircle2 className="w-2.5 h-2.5" /> حساب موثق
-                                </span>
+                                {tiktokProfile.user?.verified ? (
+                                  <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-emerald-500/20 flex items-center gap-1">
+                                    <CheckCircle2 className="w-2.5 h-2.5" /> حساب موثق
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 text-xs dir-ltr">
+                                    @{tiktokProfile.user?.uniqueId}
+                                  </span>
+                                )}
                               </div>
                               <div className="flex items-center gap-3 text-slate-400 text-xs">
                                 <div className="flex items-center gap-1">

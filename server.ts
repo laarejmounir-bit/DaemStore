@@ -58,7 +58,7 @@ app.use((req, res, next) => {
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://apis.google.com https://www.google.com https://static.cloudflareinsights.com https://www.googletagmanager.com https://www.google-analytics.com https://analytics.tiktok.com https://*.tiktokw.us; " +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
     "font-src 'self' https://fonts.gstatic.com; " +
-    "img-src 'self' data: https://picsum.photos https://*.google.com https://*.gstatic.com https://*.payzaty.com https://saudismm.com https://www.saudismm.com https://www.googletagmanager.com https://www.google-analytics.com https://analytics.tiktok.com; " +
+    "img-src 'self' data: https://picsum.photos https://*.google.com https://*.gstatic.com https://*.payzaty.com https://saudismm.com https://www.saudismm.com https://www.googletagmanager.com https://www.google-analytics.com https://analytics.tiktok.com https://*.tiktokcdn.com https://*.tiktokcdn-eu.com https://*.tiktokcdn-us.com https://*.tiktok.com https://ui-avatars.com; " +
     "connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://*.firebaseapp.com https://api.payzaty.com https://*.rapidapi.com https://www.googletagmanager.com https://*.google-analytics.com https://analytics.tiktok.com https://*.payzaty.com https://*.tiktokw.us; " +
     "frame-src 'self' https://saudismm-b1bf5.firebaseapp.com/ https://*.payzaty.com https://*.google.com https://www.googletagmanager.com;"
   );
