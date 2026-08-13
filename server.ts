@@ -7,7 +7,7 @@ import { rateLimit } from "express-rate-limit";
 import validator from "validator";
 import crypto from "crypto";
 
-import { getTikTokUserInfo } from "./api/_utils.js";
+import { getTikTokUserInfo, cleanTikTokUrl } from "./api/_utils.js";
 
 dotenv.config();
 
@@ -21,8 +21,6 @@ const PORT = 3000;
 const allowedOrigins = [
   "https://daemstore.com",
   "https://www.daemstore.com",
-  "https://saudismm.com",
-  "https://www.saudismm.com",
   "https://ais-dev-yd45tmitnmz4i3uznm2lex-594526045281.europe-west2.run.app",
   "https://ais-pre-yd45tmitnmz4i3uznm2lex-594526045281.europe-west2.run.app"
 ];
@@ -34,8 +32,7 @@ app.use(cors({
     if (
       allowedOrigins.includes(origin) ||
       origin.includes('vercel.app') ||
-      origin.includes('daemstore.com') ||
-      origin.includes('saudismm.com')
+      origin.includes('daemstore.com')
     ) {
       callback(null, true);
     } else {
@@ -58,9 +55,9 @@ app.use((req, res, next) => {
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://apis.google.com https://www.google.com https://static.cloudflareinsights.com https://www.googletagmanager.com https://www.google-analytics.com https://analytics.tiktok.com https://*.tiktokw.us; " +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
     "font-src 'self' https://fonts.gstatic.com; " +
-    "img-src 'self' data: https://picsum.photos https://*.google.com https://*.gstatic.com https://*.payzaty.com https://saudismm.com https://www.saudismm.com https://www.googletagmanager.com https://www.google-analytics.com https://analytics.tiktok.com https://*.tiktokcdn.com https://*.tiktokcdn-eu.com https://*.tiktokcdn-us.com https://*.tiktok.com https://ui-avatars.com; " +
+    "img-src 'self' data: https://picsum.photos https://*.google.com https://*.gstatic.com https://*.payzaty.com https://www.googletagmanager.com https://www.google-analytics.com https://analytics.tiktok.com https://*.tiktokcdn.com https://*.tiktokcdn-eu.com https://*.tiktokcdn-us.com https://*.tiktok.com https://ui-avatars.com; " +
     "connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://*.firebaseapp.com https://api.payzaty.com https://*.rapidapi.com https://www.googletagmanager.com https://*.google-analytics.com https://analytics.tiktok.com https://*.payzaty.com https://*.tiktokw.us; " +
-    "frame-src 'self' https://saudismm-b1bf5.firebaseapp.com/ https://*.payzaty.com https://*.google.com https://www.googletagmanager.com;"
+    "frame-src 'self' https://*.payzaty.com https://*.google.com https://www.googletagmanager.com;"
   );
   next();
 });
@@ -278,15 +275,18 @@ app.get("/api/proxy-image", async (req, res) => {
       return res.status(400).send("URL is required");
     }
 
-    const response = await fetch(url, {
+    const cleanedUrl = cleanTikTokUrl(url);
+
+    const response = await fetch(cleanedUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Referer': 'https://www.tiktok.com/'
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Mobile/15E148 Safari/604.1',
+        'Referer': 'https://www.tiktok.com/',
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
       }
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch image: ${response.statusText}`);
+      return res.redirect(cleanedUrl);
     }
 
     const contentType = response.headers.get('content-type');
@@ -301,6 +301,9 @@ app.get("/api/proxy-image", async (req, res) => {
     res.send(Buffer.from(buffer));
   } catch (error) {
     console.error("Proxy image error:", error);
+    if (typeof req.query?.url === 'string') {
+      return res.redirect(cleanTikTokUrl(req.query.url));
+    }
     res.status(500).send("Error proxying image");
   }
 });
@@ -359,7 +362,7 @@ app.post("/api/tiktok/track", async (req, res) => {
           ...hashedUser
         },
         "page": { 
-          "url": "https://saudismm.com" + (req.originalUrl || "")
+          "url": "https://daemstore.com" + (req.originalUrl || "")
         },
         ...(properties ? { properties } : {})
       }]
@@ -452,7 +455,7 @@ async function startServer() {
                 "client_user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                 "external_id": crypto.createHash('sha256').update("test_user_" + Date.now()).digest('hex')
               },
-              "page": { "url": "https://saudismm.com/startup-test" }
+              "page": { "url": "https://daemstore.com/startup-test" }
             }
           ]
         };

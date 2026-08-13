@@ -6,8 +6,6 @@ export function setCorsHeaders(req: any, res: any) {
   const allowedOrigins = [
     "https://daemstore.com",
     "https://www.daemstore.com",
-    "https://saudismm.com",
-    "https://www.saudismm.com",
     "https://ais-dev-yd45tmitnmz4i3uznm2lex-594526045281.europe-west2.run.app",
     "https://ais-pre-yd45tmitnmz4i3uznm2lex-594526045281.europe-west2.run.app"
   ];
@@ -16,8 +14,7 @@ export function setCorsHeaders(req: any, res: any) {
   if (origin) {
     const isAllowed = allowedOrigins.some(o => origin.startsWith(o)) ||
       origin.includes('vercel.app') ||
-      origin.includes('daemstore.com') ||
-      origin.includes('saudismm.com');
+      origin.includes('daemstore.com');
 
     if (isAllowed) {
       allowOrigin = origin;
@@ -76,13 +73,14 @@ export async function resolveTikTokUsername(input: string): Promise<string> {
 export async function getTikTokUserInfo(uniqueId: string) {
   const sanitizedUniqueId = await resolveTikTokUsername(uniqueId);
   if (!sanitizedUniqueId) {
-    return { statusCode: 400, error: "uniqueId is required" };
+    return { statusCode: 400, error: "اسم المستخدم مطلوب" };
   }
 
   // Strategy 1: Direct TikTok Web Scraping with User-Agent Fallbacks
   const userAgents = [
     'Mozilla/5.0 (iPhone; CPU iPhone OS 17_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Mobile/15E148 Safari/604.1',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
   ];
 
@@ -106,7 +104,8 @@ export async function getTikTokUserInfo(uniqueId: string) {
         if (match1 && match1[1]) {
           try {
             const parsed = JSON.parse(match1[1]);
-            userInfo = parsed['__DEFAULT_SCOPE__']?.['webapp.user-detail']?.userInfo;
+            const scope = parsed['__DEFAULT_SCOPE__'] || {};
+            userInfo = scope['webapp.user-detail']?.userInfo || scope['page.user-detail']?.userInfo;
           } catch (e) {
             console.warn("Parse error for __UNIVERSAL_DATA_FOR_REHYDRATION__:", e);
           }
@@ -161,6 +160,22 @@ export async function getTikTokUserInfo(uniqueId: string) {
           if (userInfo.user.avatarThumb) userInfo.user.avatarThumb = cleanTikTokUrl(userInfo.user.avatarThumb);
           if (userInfo.user.avatarLarger) userInfo.user.avatarLarger = cleanTikTokUrl(userInfo.user.avatarLarger);
           if (userInfo.user.avatarMedium) userInfo.user.avatarMedium = cleanTikTokUrl(userInfo.user.avatarMedium);
+
+          // Handle 32-bit integer overflow for large follower/heart counts
+          if (userInfo.stats) {
+            const s = userInfo.stats;
+            const s2 = userInfo.statsV2 || {};
+
+            if (s2.followerCount) s.followerCount = parseInt(s2.followerCount, 10);
+            else if (typeof s.followerCount === 'number' && s.followerCount < 0) s.followerCount += 4294967296;
+
+            if (s2.heartCount) s.heartCount = parseInt(s2.heartCount, 10);
+            else if (s2.heart) s.heartCount = parseInt(s2.heart, 10);
+            else if (typeof s.heartCount === 'number' && s.heartCount < 0) s.heartCount += 4294967296;
+            else if (typeof s.heart === 'number' && s.heart < 0) s.heartCount = s.heart + 4294967296;
+            else if (s.heart && !s.heartCount) s.heartCount = s.heart;
+          }
+
           return { statusCode: 0, userInfo };
         }
       }
@@ -191,34 +206,6 @@ export async function getTikTokUserInfo(uniqueId: string) {
     }
   } catch (err) {
     console.warn("TikTok public API failed:", err);
-  }
-
-  // Strategy 3: TikTok oEmbed API (Guaranteed public metadata)
-  try {
-    const oembedRes = await fetch(`https://www.tiktok.com/oembed?url=https://www.tiktok.com/@${encodeURIComponent(sanitizedUniqueId)}`);
-    if (oembedRes.ok) {
-      const data = await oembedRes.json();
-      if (data && data.author_name) {
-        return {
-          statusCode: 0,
-          userInfo: {
-            user: {
-              uniqueId: data.embed_product_id || sanitizedUniqueId,
-              nickname: data.author_name,
-              avatarThumb: "",
-              avatarLarger: "",
-              verified: false
-            },
-            stats: {
-              followerCount: 0,
-              heartCount: 0
-            }
-          }
-        };
-      }
-    }
-  } catch (err) {
-    console.warn("TikTok oEmbed failed:", err);
   }
 
   // Strategy 3: RapidAPI (if RAPIDAPI_KEY is configured in env)
