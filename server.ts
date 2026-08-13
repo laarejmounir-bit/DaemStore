@@ -276,35 +276,50 @@ app.get("/api/proxy-image", async (req, res) => {
     }
 
     const cleanedUrl = cleanTikTokUrl(url);
-
-    const response = await fetch(cleanedUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Mobile/15E148 Safari/604.1',
-        'Referer': 'https://www.tiktok.com/',
-        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
-      }
-    });
-
-    if (!response.ok) {
-      return res.redirect(cleanedUrl);
+    if (!cleanedUrl || !cleanedUrl.startsWith('http')) {
+      return res.status(400).send("Invalid image URL");
     }
 
-    const contentType = response.headers.get('content-type');
-    if (contentType) {
-      res.setHeader('Content-Type', contentType);
-    }
-    
-    // Cache for 24 hours
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    const uas = [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+    ];
 
-    const buffer = await response.arrayBuffer();
-    res.send(Buffer.from(buffer));
+    let imageRes: Response | null = null;
+    for (const ua of uas) {
+      try {
+        const response = await fetch(cleanedUrl, {
+          headers: {
+            'User-Agent': ua,
+            'Referer': 'https://www.tiktok.com/',
+            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+          }
+        });
+        if (response.ok) {
+          imageRes = response;
+          break;
+        }
+      } catch (e) {}
+    }
+
+    if (!imageRes || !imageRes.ok) {
+      const fallbackName = encodeURIComponent("TikTok");
+      const fallbackRes = await fetch(`https://ui-avatars.com/api/?name=${fallbackName}&background=10b981&color=fff`);
+      res.setHeader('Content-Type', 'image/png');
+      const buf = await fallbackRes.arrayBuffer();
+      return res.status(200).send(Buffer.from(buf));
+    }
+
+    const contentType = imageRes.headers.get('content-type') || 'image/jpeg';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400');
+
+    const buffer = await imageRes.arrayBuffer();
+    return res.status(200).send(Buffer.from(buffer));
   } catch (error) {
     console.error("Proxy image error:", error);
-    if (typeof req.query?.url === 'string') {
-      return res.redirect(cleanTikTokUrl(req.query.url));
-    }
-    res.status(500).send("Error proxying image");
+    return res.status(500).send("Error proxying image");
   }
 });
 

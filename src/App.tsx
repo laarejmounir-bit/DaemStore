@@ -644,33 +644,6 @@ function Home() {
         if (data && data.statusCode === 0 && data.userInfo && data.userInfo.user) {
           setTiktokProfile(data.userInfo);
         } else {
-          // Client-side Direct oEmbed Fallback in case backend API returned 404 or was blocked
-          try {
-            const oembedRes = await fetch(`https://www.tiktok.com/oembed?url=https://www.tiktok.com/@${encodeURIComponent(username)}`);
-            if (oembedRes.ok) {
-              const odata = await oembedRes.json();
-              if (odata && odata.author_name) {
-                setTiktokProfile({
-                  user: {
-                    uniqueId: username,
-                    nickname: odata.author_name,
-                    avatarThumb: `https://ui-avatars.com/api/?name=${encodeURIComponent(odata.author_name)}&background=10b981&color=fff`,
-                    avatarLarger: `https://ui-avatars.com/api/?name=${encodeURIComponent(odata.author_name)}&background=10b981&color=fff`,
-                    verified: false
-                  },
-                  stats: {
-                    followerCount: null,
-                    heartCount: null
-                  }
-                });
-                setTiktokError(null);
-                return;
-              }
-            }
-          } catch (oErr) {
-            console.warn("Client-side oEmbed fallback failed:", oErr);
-          }
-
           setTiktokProfile(null);
           if (data && (data.statusCode === 429 || response.status === 429)) {
             setTiktokError("تم تجاوز حد الطلبات السريعة، يرجى الانتظار بضعة ثواني والإعادة");
@@ -1179,20 +1152,23 @@ function Home() {
                             
                             <div className="relative shrink-0">
                               <img 
-                                src={(tiktokProfile.user?.avatarThumb || tiktokProfile.user?.avatarLarger) 
-                                  ? `/api/proxy-image?url=${encodeURIComponent(tiktokProfile.user?.avatarThumb || tiktokProfile.user?.avatarLarger || '')}` 
-                                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(tiktokProfile.user?.nickname || 'TikTok')}&background=10b981&color=fff`} 
+                                src={(tiktokProfile.user?.avatarThumb || tiktokProfile.user?.avatarLarger || tiktokProfile.user?.avatarMedium) 
+                                  ? `/api/proxy-image?url=${encodeURIComponent(tiktokProfile.user?.avatarThumb || tiktokProfile.user?.avatarLarger || tiktokProfile.user?.avatarMedium || '')}` 
+                                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(tiktokProfile.user?.nickname || tiktokProfile.user?.uniqueId || 'TikTok')}&background=10b981&color=fff`} 
                                 alt={tiktokProfile.user?.nickname || 'Avatar'}
                                 className="w-14 h-14 rounded-full border-2 border-emerald-500/50 object-cover"
                                 referrerPolicy="no-referrer"
                                 onError={(e) => {
                                   const target = e.currentTarget;
-                                  const directUrl = tiktokProfile.user?.avatarLarger || tiktokProfile.user?.avatarThumb;
-                                  if (directUrl && target.src.includes('/api/proxy-image')) {
-                                    target.src = directUrl;
-                                  } else {
-                                    target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(tiktokProfile.user?.nickname || 'TikTok')}&background=10b981&color=fff`;
+                                  if (!target.dataset.failedOnce) {
+                                    target.dataset.failedOnce = "true";
+                                    const directUrl = tiktokProfile.user?.avatarLarger || tiktokProfile.user?.avatarThumb;
+                                    if (directUrl && directUrl.startsWith('http')) {
+                                      target.src = directUrl;
+                                      return;
+                                    }
                                   }
+                                  target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(tiktokProfile.user?.nickname || tiktokProfile.user?.uniqueId || 'TikTok')}&background=10b981&color=fff`;
                                 }}
                               />
                               {tiktokProfile.user?.verified && (

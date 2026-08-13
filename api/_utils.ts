@@ -38,13 +38,19 @@ export function setCorsHeaders(req: any, res: any) {
 
 export function cleanTikTokUrl(url: string): string {
   if (!url) return '';
-  let cleaned = url;
-  if (cleaned.includes('\\u002F') || cleaned.includes('\\u0026') || cleaned.includes('\\u002f')) {
-    try {
-      cleaned = JSON.parse('"' + cleaned.replace(/"/g, '\\"') + '"');
-    } catch (e) {
-      cleaned = cleaned.replace(/\\u002F/gi, '/').replace(/\\u0026/gi, '&');
-    }
+  let cleaned = String(url).trim();
+  
+  // Clean unicode escapes, slashes, and HTML entities
+  cleaned = cleaned
+    .replace(/\\u002f/gi, '/')
+    .replace(/\\u0026/gi, '&')
+    .replace(/\\u003d/gi, '=')
+    .replace(/\\u003f/gi, '?')
+    .replace(/\\/g, '')
+    .replace(/&amp;/g, '&');
+
+  if (cleaned.startsWith('//')) {
+    cleaned = 'https:' + cleaned;
   }
   return cleaned;
 }
@@ -76,28 +82,9 @@ export async function getTikTokUserInfo(uniqueId: string) {
     return { statusCode: 400, error: "اسم المستخدم مطلوب" };
   }
 
-  // Pre-Check: Official TikTok oEmbed API (Guaranteed check for public accounts on all IPs)
-  let oembedNickname: string | null = null;
-  try {
-    const oembedRes = await fetch(`https://www.tiktok.com/oembed?url=https://www.tiktok.com/@${encodeURIComponent(sanitizedUniqueId)}`, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*'
-      }
-    });
-    if (oembedRes.ok) {
-      const odata = await oembedRes.json();
-      if (odata && odata.author_name) {
-        oembedNickname = odata.author_name;
-      }
-    }
-  } catch (err) {
-    console.warn("TikTok oEmbed pre-check failed:", err);
-  }
-
   // Strategy 1: Direct TikTok Web Scraping with User-Agent Fallbacks
   const userAgents = [
-    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
@@ -167,7 +154,7 @@ export async function getTikTokUserInfo(uniqueId: string) {
             userInfo = {
               user: {
                 uniqueId: sanitizedUniqueId,
-                nickname: nicknameMatch ? nicknameMatch[1] : (oembedNickname || sanitizedUniqueId),
+                nickname: nicknameMatch ? nicknameMatch[1] : sanitizedUniqueId,
                 avatarThumb: avatarMatch ? avatarMatch[1] : '',
                 avatarLarger: avatarMatch ? avatarMatch[1] : '',
                 verified: verifiedMatch ? verifiedMatch[1] === 'true' : false
@@ -211,7 +198,7 @@ export async function getTikTokUserInfo(uniqueId: string) {
   try {
     const apiRes = await fetch(`https://www.tiktok.com/api/user/detail/?uniqueId=${encodeURIComponent(sanitizedUniqueId)}`, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Mobile/15E148 Safari/604.1',
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1',
         'Referer': `https://www.tiktok.com/@${encodeURIComponent(sanitizedUniqueId)}`,
         'Accept': 'application/json, text/plain, */*'
       }
@@ -232,27 +219,40 @@ export async function getTikTokUserInfo(uniqueId: string) {
     console.warn("TikTok public API failed:", err);
   }
 
-  // If scraping & public detail API failed due to IP anti-bot, BUT oembed found nickname:
-  if (oembedNickname) {
-    return {
-      statusCode: 0,
-      userInfo: {
-        user: {
-          uniqueId: sanitizedUniqueId,
-          nickname: oembedNickname,
-          avatarThumb: `https://ui-avatars.com/api/?name=${encodeURIComponent(oembedNickname)}&background=10b981&color=fff`,
-          avatarLarger: `https://ui-avatars.com/api/?name=${encodeURIComponent(oembedNickname)}&background=10b981&color=fff`,
-          verified: false
-        },
-        stats: {
-          followerCount: null,
-          heartCount: null
-        }
+  // Strategy 3: TikTok oEmbed Check for Profile Verification
+  try {
+    const oembedRes = await fetch(`https://www.tiktok.com/oembed?url=https://www.tiktok.com/@${encodeURIComponent(sanitizedUniqueId)}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*'
       }
-    };
+    });
+    if (oembedRes.ok) {
+      const odata = await oembedRes.json();
+      if (odata && odata.author_name) {
+        return {
+          statusCode: 0,
+          userInfo: {
+            user: {
+              uniqueId: sanitizedUniqueId,
+              nickname: odata.author_name,
+              avatarThumb: '',
+              avatarLarger: '',
+              verified: false
+            },
+            stats: {
+              followerCount: null,
+              heartCount: null
+            }
+          }
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("TikTok oEmbed check failed:", err);
   }
 
-  // Strategy 3: RapidAPI (if RAPIDAPI_KEY is configured in env)
+  // Strategy 4: RapidAPI (if RAPIDAPI_KEY is configured in env)
   const apiKey = process.env.RAPIDAPI_KEY;
   if (apiKey) {
     try {
@@ -271,6 +271,8 @@ export async function getTikTokUserInfo(uniqueId: string) {
       if (rapidRes.ok) {
         const data = await rapidRes.json();
         if (data && data.userInfo) {
+          if (data.userInfo.user?.avatarThumb) data.userInfo.user.avatarThumb = cleanTikTokUrl(data.userInfo.user.avatarThumb);
+          if (data.userInfo.user?.avatarLarger) data.userInfo.user.avatarLarger = cleanTikTokUrl(data.userInfo.user.avatarLarger);
           return data;
         }
       }
