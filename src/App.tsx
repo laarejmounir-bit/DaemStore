@@ -643,34 +643,8 @@ function Home() {
 
         if (data && data.statusCode === 0 && data.userInfo && data.userInfo.user) {
           setTiktokProfile(data.userInfo);
+          setTiktokError(null);
         } else {
-          // Client-side Direct oEmbed Fallback in case backend API returned 404 or was blocked by TikTok Cloudflare
-          try {
-            const oembedRes = await fetch(`https://www.tiktok.com/oembed?url=https://www.tiktok.com/@${encodeURIComponent(username)}`);
-            if (oembedRes.ok) {
-              const odata = await oembedRes.json();
-              if (odata && odata.author_name) {
-                setTiktokProfile({
-                  user: {
-                    uniqueId: username,
-                    nickname: odata.author_name,
-                    avatarThumb: `https://ui-avatars.com/api/?name=${encodeURIComponent(odata.author_name)}&background=10b981&color=fff`,
-                    avatarLarger: `https://ui-avatars.com/api/?name=${encodeURIComponent(odata.author_name)}&background=10b981&color=fff`,
-                    verified: false
-                  },
-                  stats: {
-                    followerCount: null,
-                    heartCount: null
-                  }
-                });
-                setTiktokError(null);
-                return;
-              }
-            }
-          } catch (oErr) {
-            console.warn("Client-side oEmbed fallback failed:", oErr);
-          }
-
           setTiktokProfile(null);
           if (data && (data.statusCode === 429 || response.status === 429)) {
             setTiktokError("تم تجاوز حد الطلبات السريعة، يرجى الانتظار بضعة ثواني والإعادة");
@@ -764,6 +738,10 @@ function Home() {
         
         console.log(`Checkout attempt ${attempts} with reference: ${orderId}`);
         
+        const rawDigits = (customerPhone || '').replace(/\D/g, '');
+        const cleanPhoneDigits = rawDigits.replace(/^0+/, '');
+        const formattedPhone = cleanPhoneDigits ? `+966${cleanPhoneDigits}` : '+966500000000';
+
         const response = await fetch('/api/checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -774,7 +752,7 @@ function Home() {
             customer: {
               name: customerName || 'Guest User',
               email: customerEmail || 'guest@example.com',
-              phone: `+966${customerPhone}`
+              phone: formattedPhone
             },
             response_url: `${window.location.origin}/thankyou?payment_return=true`,
             cancel_url: `${window.location.origin}/thankyou?payment_cancel=true`,
@@ -800,7 +778,16 @@ function Home() {
           localStorage.setItem('last_customer_name', customerName);
           localStorage.setItem('last_customer_phone', customerPhone);
           localStorage.setItem('last_customer_email', customerEmail);
-          window.location.href = data.checkout_url;
+          
+          if (window.top && window.top !== window) {
+            try {
+              window.top.location.href = data.checkout_url;
+            } catch (e) {
+              window.location.href = data.checkout_url;
+            }
+          } else {
+            window.location.href = data.checkout_url;
+          }
         } else {
           // Check for duplicate reference error
           const errorMsg = (data.error || data.message || '').toLowerCase();
@@ -1272,14 +1259,18 @@ function Home() {
                           value={customerPhone}
                           onChange={(e) => {
                             const val = e.target.value.replace(/\D/g, '');
-                            if (val.length <= 9) setCustomerPhone(val);
+                            if (val.startsWith('0')) {
+                              if (val.length <= 10) setCustomerPhone(val);
+                            } else {
+                              if (val.length <= 9) setCustomerPhone(val);
+                            }
                           }}
-                          placeholder="5XXXXXXXX"
+                          placeholder="5XXXXXXXX أو 05XXXXXXXX"
                           className="w-full bg-slate-950/50 border border-white/10 rounded-2xl pl-20 pr-6 py-4 text-white focus:outline-none focus:border-emerald-500/50 transition-all ltr"
                           dir="ltr"
                         />
                       </div>
-                      <p className="text-xs text-slate-500 mr-1">أدخل رقم الجوال المكون من 9 أرقام يبدأ بـ 5</p>
+                      <p className="text-xs text-slate-500 mr-1">أدخل رقم الجوال المكون من 9 أرقام يبدأ بـ 5 (مثل: 501234567)</p>
                     </div>
 
                     <div className="space-y-2">
@@ -1552,7 +1543,7 @@ function Home() {
                       disabled={
                         modalStep === 'plans' ? !selectedPlan : 
                         modalStep === 'details' ? !targetLink :
-                        (!customerName || customerPhone.length < 9 || isCheckingOut)
+                        (!customerName || customerPhone.length < 8 || isCheckingOut)
                       }
                       onClick={() => {
                         if (modalStep === 'plans') {
@@ -1578,7 +1569,7 @@ function Home() {
                         else handleCheckout();
                       }}
                       className={`w-full sm:w-auto px-8 py-4 rounded-2xl font-bold transition-all active:scale-95 border border-transparent ${
-                        (modalStep === 'plans' ? selectedPlan : modalStep === 'details' ? targetLink : (customerName && customerPhone.length >= 9)) && !isCheckingOut
+                        (modalStep === 'plans' ? selectedPlan : modalStep === 'details' ? targetLink : (customerName && customerPhone.length >= 8)) && !isCheckingOut
                           ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-lg shadow-emerald-500/20' 
                           : 'bg-slate-800 text-slate-500 cursor-not-allowed'
                       }`}

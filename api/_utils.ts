@@ -194,7 +194,56 @@ export async function getTikTokUserInfo(uniqueId: string) {
     }
   }
 
-  // Strategy 2: TikTok Public Web API
+  // Strategy 2: TikTok Embed Page Scraping (Highly reliable fallback for avatar, stats, nickname)
+  try {
+    const embedRes = await fetch(`https://www.tiktok.com/embed/@${encodeURIComponent(sanitizedUniqueId)}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+
+    if (embedRes.ok) {
+      const html = await embedRes.text();
+      const avtMatch = html.match(/"(https:\/\/[^"]*avt[^"]*)"/) || 
+                       html.match(/"avatarLarger":"([^"]+)"/) || 
+                       html.match(/"avatarThumb":"([^"]+)"/);
+
+      const nicknameMatch = html.match(/"nickname":"([^"]+)"/) || html.match(/"author_name":"([^"]+)"/);
+      const followerMatch = html.match(/"followerCount":(\d+)/) || html.match(/"followers":(\d+)/);
+      const heartMatch = html.match(/"heartCount":(\d+)/) || html.match(/"heart":(\d+)/) || html.match(/"likes":(\d+)/);
+
+      if (nicknameMatch || avtMatch || followerMatch) {
+        const rawAvatar = avtMatch ? avtMatch[1] : '';
+        const avatarUrl = rawAvatar ? cleanTikTokUrl(rawAvatar) : '';
+        const nickname = nicknameMatch ? nicknameMatch[1] : sanitizedUniqueId;
+        const followerCount = followerMatch ? parseInt(followerMatch[1], 10) : null;
+        const heartCount = heartMatch ? parseInt(heartMatch[1], 10) : null;
+
+        return {
+          statusCode: 0,
+          userInfo: {
+            user: {
+              uniqueId: sanitizedUniqueId,
+              nickname,
+              avatarThumb: avatarUrl,
+              avatarLarger: avatarUrl,
+              avatarMedium: avatarUrl,
+              verified: false
+            },
+            stats: {
+              followerCount,
+              heartCount
+            }
+          }
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("TikTok embed scraping failed:", err);
+  }
+
+  // Strategy 3: TikTok Public Web API
   try {
     const apiRes = await fetch(`https://www.tiktok.com/api/user/detail/?uniqueId=${encodeURIComponent(sanitizedUniqueId)}`, {
       headers: {
@@ -219,7 +268,7 @@ export async function getTikTokUserInfo(uniqueId: string) {
     console.warn("TikTok public API failed:", err);
   }
 
-  // Strategy 3: TikTok oEmbed Check for Profile Verification
+  // Strategy 4: TikTok oEmbed Check with Embed Image Fallback
   try {
     const oembedRes = await fetch(`https://www.tiktok.com/oembed?url=https://www.tiktok.com/@${encodeURIComponent(sanitizedUniqueId)}`, {
       headers: {
@@ -230,19 +279,40 @@ export async function getTikTokUserInfo(uniqueId: string) {
     if (oembedRes.ok) {
       const odata = await oembedRes.json();
       if (odata && odata.author_name) {
+        // Try to get avatar and stats from embed page if possible
+        let avatarUrl = '';
+        let followerCount: number | null = null;
+        let heartCount: number | null = null;
+
+        try {
+          const emb = await fetch(`https://www.tiktok.com/embed/@${encodeURIComponent(sanitizedUniqueId)}`);
+          if (emb.ok) {
+            const h = await emb.text();
+            const av = h.match(/"(https:\/\/[^"]*avt[^"]*)"/);
+            if (av) avatarUrl = cleanTikTokUrl(av[1]);
+            const fl = h.match(/"followerCount":(\d+)/) || h.match(/"followers":(\d+)/);
+            if (fl) followerCount = parseInt(fl[1], 10);
+            const ht = h.match(/"heartCount":(\d+)/) || h.match(/"heart":(\d+)/) || h.match(/"likes":(\d+)/);
+            if (ht) heartCount = parseInt(ht[1], 10);
+          }
+        } catch (e) {
+          console.warn("oEmbed avatar lookup failed:", e);
+        }
+
         return {
           statusCode: 0,
           userInfo: {
             user: {
               uniqueId: sanitizedUniqueId,
               nickname: odata.author_name,
-              avatarThumb: '',
-              avatarLarger: '',
+              avatarThumb: avatarUrl,
+              avatarLarger: avatarUrl,
+              avatarMedium: avatarUrl,
               verified: false
             },
             stats: {
-              followerCount: null,
-              heartCount: null
+              followerCount,
+              heartCount
             }
           }
         };
