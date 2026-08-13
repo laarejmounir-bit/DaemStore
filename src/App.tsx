@@ -644,6 +644,33 @@ function Home() {
         if (data && data.statusCode === 0 && data.userInfo && data.userInfo.user) {
           setTiktokProfile(data.userInfo);
         } else {
+          // Client-side Direct oEmbed Fallback in case backend API returned 404 or was blocked by TikTok Cloudflare
+          try {
+            const oembedRes = await fetch(`https://www.tiktok.com/oembed?url=https://www.tiktok.com/@${encodeURIComponent(username)}`);
+            if (oembedRes.ok) {
+              const odata = await oembedRes.json();
+              if (odata && odata.author_name) {
+                setTiktokProfile({
+                  user: {
+                    uniqueId: username,
+                    nickname: odata.author_name,
+                    avatarThumb: `https://ui-avatars.com/api/?name=${encodeURIComponent(odata.author_name)}&background=10b981&color=fff`,
+                    avatarLarger: `https://ui-avatars.com/api/?name=${encodeURIComponent(odata.author_name)}&background=10b981&color=fff`,
+                    verified: false
+                  },
+                  stats: {
+                    followerCount: null,
+                    heartCount: null
+                  }
+                });
+                setTiktokError(null);
+                return;
+              }
+            }
+          } catch (oErr) {
+            console.warn("Client-side oEmbed fallback failed:", oErr);
+          }
+
           setTiktokProfile(null);
           if (data && (data.statusCode === 429 || response.status === 429)) {
             setTiktokError("تم تجاوز حد الطلبات السريعة، يرجى الانتظار بضعة ثواني والإعادة");
