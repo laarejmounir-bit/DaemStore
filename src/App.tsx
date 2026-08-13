@@ -654,8 +654,8 @@ function Home() {
                   user: {
                     uniqueId: username,
                     nickname: odata.author_name,
-                    avatarThumb: '',
-                    avatarLarger: '',
+                    avatarThumb: `https://ui-avatars.com/api/?name=${encodeURIComponent(odata.author_name)}&background=10b981&color=fff`,
+                    avatarLarger: `https://ui-avatars.com/api/?name=${encodeURIComponent(odata.author_name)}&background=10b981&color=fff`,
                     verified: false
                   },
                   stats: {
@@ -1174,12 +1174,18 @@ function Home() {
                               <img 
                                 src={(tiktokProfile.user?.avatarThumb || tiktokProfile.user?.avatarLarger) 
                                   ? `/api/proxy-image?url=${encodeURIComponent(tiktokProfile.user?.avatarThumb || tiktokProfile.user?.avatarLarger || '')}` 
-                                  : 'https://picsum.photos/seed/avatar/200/200'} 
+                                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(tiktokProfile.user?.nickname || 'TikTok')}&background=10b981&color=fff`} 
                                 alt={tiktokProfile.user?.nickname || 'Avatar'}
                                 className="w-14 h-14 rounded-full border-2 border-emerald-500/50 object-cover"
                                 referrerPolicy="no-referrer"
                                 onError={(e) => {
-                                  (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/avatar/200/200';
+                                  const target = e.currentTarget;
+                                  const directUrl = tiktokProfile.user?.avatarLarger || tiktokProfile.user?.avatarThumb;
+                                  if (directUrl && !target.src.includes(directUrl) && !target.src.includes('ui-avatars.com')) {
+                                    target.src = directUrl;
+                                  } else {
+                                    target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(tiktokProfile.user?.nickname || 'TikTok')}&background=10b981&color=fff`;
+                                  }
                                 }}
                               />
                               {tiktokProfile.user?.verified && (

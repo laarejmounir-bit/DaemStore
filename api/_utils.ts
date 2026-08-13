@@ -39,6 +39,19 @@ export function setCorsHeaders(req: any, res: any) {
   return false;
 }
 
+export function cleanTikTokUrl(url: string): string {
+  if (!url) return '';
+  let cleaned = url;
+  if (cleaned.includes('\\u002F') || cleaned.includes('\\u0026') || cleaned.includes('\\u002f')) {
+    try {
+      cleaned = JSON.parse('"' + cleaned.replace(/"/g, '\\"') + '"');
+    } catch (e) {
+      cleaned = cleaned.replace(/\\u002F/gi, '/').replace(/\\u0026/gi, '&');
+    }
+  }
+  return cleaned;
+}
+
 export async function resolveTikTokUsername(input: string): Promise<string> {
   let cleaned = input.trim();
   if (!cleaned) return '';
@@ -70,8 +83,8 @@ export async function getTikTokUserInfo(uniqueId: string) {
   try {
     const webRes = await fetch(`https://www.tiktok.com/@${encodeURIComponent(sanitizedUniqueId)}`, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-        'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept-Language': 'ar-SA,ar;q=0.9,en-US;q=0.8,en;q=0.7',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Cache-Control': 'no-cache'
       }
@@ -79,56 +92,69 @@ export async function getTikTokUserInfo(uniqueId: string) {
 
     if (webRes.ok) {
       const html = await webRes.text();
+      let userInfo: any = null;
 
       // Pattern 1: __UNIVERSAL_DATA_FOR_REHYDRATION__
       const match1 = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application\/json">(.*?)<\/script>/s);
       if (match1 && match1[1]) {
         try {
           const parsed = JSON.parse(match1[1]);
-          const userInfo = parsed['__DEFAULT_SCOPE__']?.['webapp.user-detail']?.userInfo;
-          if (userInfo && userInfo.user) {
-            return { statusCode: 0, userInfo };
-          }
+          userInfo = parsed['__DEFAULT_SCOPE__']?.['webapp.user-detail']?.userInfo;
         } catch (e) {
           console.warn("Parse error for __UNIVERSAL_DATA_FOR_REHYDRATION__:", e);
         }
       }
 
       // Pattern 2: SIGI_STATE
-      const match2 = html.match(/<script id="SIGI_STATE" type="application\/json">(.*?)<\/script>/s);
-      if (match2 && match2[1]) {
-        try {
-          const parsed = JSON.parse(match2[1]);
-          const UserModule = parsed.UserModule || {};
-          const users = UserModule.users || {};
-          const stats = UserModule.stats || {};
-          const userObj = users[sanitizedUniqueId] || Object.values(users)[0];
-          const statsObj = stats[sanitizedUniqueId] || Object.values(stats)[0];
-          if (userObj) {
-            return {
-              statusCode: 0,
-              userInfo: {
-                user: userObj,
-                stats: statsObj || {}
-              }
-            };
+      if (!userInfo || !userInfo.user) {
+        const match2 = html.match(/<script id="SIGI_STATE" type="application\/json">(.*?)<\/script>/s);
+        if (match2 && match2[1]) {
+          try {
+            const parsed = JSON.parse(match2[1]);
+            const UserModule = parsed.UserModule || {};
+            const users = UserModule.users || {};
+            const stats = UserModule.stats || {};
+            const userObj = users[sanitizedUniqueId] || Object.values(users)[0];
+            const statsObj = stats[sanitizedUniqueId] || Object.values(stats)[0];
+            if (userObj) {
+              userInfo = { user: userObj, stats: statsObj || {} };
+            }
+          } catch (e) {
+            console.warn("Parse error for SIGI_STATE:", e);
           }
-        } catch (e) {
-          console.warn("Parse error for SIGI_STATE:", e);
         }
       }
 
-      // Pattern 3: __FRONTEND_DATA__
-      const match3 = html.match(/<script id="__FRONTEND_DATA__" type="application\/json">(.*?)<\/script>/s);
-      if (match3 && match3[1]) {
-        try {
-          const parsed = JSON.parse(match3[1]);
-          if (parsed.userInfo && parsed.userInfo.user) {
-            return { statusCode: 0, userInfo: parsed.userInfo };
-          }
-        } catch (e) {
-          console.warn("Parse error for __FRONTEND_DATA__:", e);
+      // Pattern 3: Direct Regex Fallback on HTML
+      if (!userInfo || !userInfo.user) {
+        const avatarMatch = html.match(/"avatarLarger":"([^"]+)"/) || html.match(/"avatarThumb":"([^"]+)"/) || html.match(/"avatarMedium":"([^"]+)"/);
+        const nicknameMatch = html.match(/"nickname":"([^"]+)"/);
+        const followerMatch = html.match(/"followerCount":(\d+)/);
+        const heartMatch = html.match(/"heartCount":(\d+)/) || html.match(/"heart":(\d+)/);
+        const verifiedMatch = html.match(/"verified":(true|false)/);
+
+        if (avatarMatch || followerMatch || nicknameMatch) {
+          userInfo = {
+            user: {
+              uniqueId: sanitizedUniqueId,
+              nickname: nicknameMatch ? nicknameMatch[1] : sanitizedUniqueId,
+              avatarThumb: avatarMatch ? avatarMatch[1] : '',
+              avatarLarger: avatarMatch ? avatarMatch[1] : '',
+              verified: verifiedMatch ? verifiedMatch[1] === 'true' : false
+            },
+            stats: {
+              followerCount: followerMatch ? parseInt(followerMatch[1], 10) : 0,
+              heartCount: heartMatch ? parseInt(heartMatch[1], 10) : 0
+            }
+          };
         }
+      }
+
+      if (userInfo && userInfo.user) {
+        if (userInfo.user.avatarThumb) userInfo.user.avatarThumb = cleanTikTokUrl(userInfo.user.avatarThumb);
+        if (userInfo.user.avatarLarger) userInfo.user.avatarLarger = cleanTikTokUrl(userInfo.user.avatarLarger);
+        if (userInfo.user.avatarMedium) userInfo.user.avatarMedium = cleanTikTokUrl(userInfo.user.avatarMedium);
+        return { statusCode: 0, userInfo };
       }
     }
   } catch (err) {
@@ -139,7 +165,7 @@ export async function getTikTokUserInfo(uniqueId: string) {
   try {
     const apiRes = await fetch(`https://www.tiktok.com/api/user/detail/?uniqueId=${encodeURIComponent(sanitizedUniqueId)}`, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Referer': 'https://www.tiktok.com/'
       }
     });
@@ -149,6 +175,8 @@ export async function getTikTokUserInfo(uniqueId: string) {
       if (text && text.startsWith('{')) {
         const data = JSON.parse(text);
         if (data && data.userInfo && data.userInfo.user) {
+          if (data.userInfo.user.avatarThumb) data.userInfo.user.avatarThumb = cleanTikTokUrl(data.userInfo.user.avatarThumb);
+          if (data.userInfo.user.avatarLarger) data.userInfo.user.avatarLarger = cleanTikTokUrl(data.userInfo.user.avatarLarger);
           return { statusCode: 0, userInfo: data.userInfo };
         }
       }
