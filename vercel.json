@@ -3,14 +3,9 @@
   "buildCommand": "vite build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/api/tiktok/user", "destination": "/api/tiktok/user.ts" },
-    { "source": "/api/proxy-image", "destination": "/api/proxy-image.ts" },
-    { "source": "/api/checkout/(.*)", "destination": "/api/checkout.ts" },
-    { "source": "/api/checkout", "destination": "/api/checkout.ts" },
-    { "source": "/api/tiktok/track", "destination": "/api/tiktok/track.ts" },
-    { "source": "/api/webhook/order", "destination": "/api/webhook/order.ts" },
-    { "source": "/api/webhook/refill", "destination": "/api/webhook/refill.ts" },
-    { "source": "/api/health", "destination": "/api/health.ts" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
   ]
 }

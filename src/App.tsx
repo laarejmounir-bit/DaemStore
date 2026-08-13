@@ -622,17 +622,73 @@ function Home() {
 
       try {
         const response = await fetch(`/api/tiktok/user?uniqueId=${username}`);
-        const data = await response.json();
+        const contentType = response.headers.get('content-type') || '';
+        
+        let data: any = null;
+        if (contentType.includes('application/json')) {
+          data = await response.json();
+        }
 
-        if (data.statusCode === 0) {
+        if (data && data.statusCode === 0 && data.userInfo) {
           setTiktokProfile(data.userInfo);
-        } else if (response.status === 429) {
-          setTiktokError("نظام التحقق تحت الصيانة مؤقتاً، يمكنك إكمال الطلب يدوياً");
         } else {
-          setTiktokError("لم يتم العثور على الحساب، تأكد من اليوزر");
+          // Client-side Fallback: Try direct TikTok oEmbed
+          try {
+            const oembedRes = await fetch(`https://www.tiktok.com/oembed?url=https://www.tiktok.com/@${encodeURIComponent(username)}`);
+            if (oembedRes.ok) {
+              const odata = await oembedRes.json();
+              if (odata && odata.author_name) {
+                setTiktokProfile({
+                  user: {
+                    uniqueId: username,
+                    nickname: odata.author_name,
+                    avatarThumb: '',
+                    avatarLarger: '',
+                    verified: false
+                  },
+                  stats: {
+                    followerCount: 0,
+                    heartCount: 0
+                  }
+                });
+                return;
+              }
+            }
+          } catch (e) {
+            console.warn("Client oembed fallback failed:", e);
+          }
+
+          if (data && response.status === 429) {
+            setTiktokError("نظام التحقق تحت الصيانة مؤقتاً، يمكنك إكمال الطلب يدوياً");
+          } else {
+            setTiktokError("لم يتم العثور على الحساب، تأكد من اليوزر");
+          }
         }
       } catch (err) {
         console.error("TikTok lookup error:", err);
+        try {
+          const oembedRes = await fetch(`https://www.tiktok.com/oembed?url=https://www.tiktok.com/@${encodeURIComponent(username)}`);
+          if (oembedRes.ok) {
+            const odata = await oembedRes.json();
+            if (odata && odata.author_name) {
+              setTiktokProfile({
+                user: {
+                  uniqueId: username,
+                  nickname: odata.author_name,
+                  avatarThumb: '',
+                  avatarLarger: '',
+                  verified: false
+                },
+                stats: {
+                  followerCount: 0,
+                  heartCount: 0
+                }
+              });
+              return;
+            }
+          }
+        } catch (e) {}
+
         setTiktokError("حدث خطأ أثناء التحقق من الحساب");
       } finally {
         setIsTiktokLoading(false);

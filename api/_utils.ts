@@ -145,13 +145,44 @@ export async function getTikTokUserInfo(uniqueId: string) {
     });
 
     if (apiRes.ok) {
-      const data = await apiRes.json();
-      if (data && data.userInfo && data.userInfo.user) {
-        return { statusCode: 0, userInfo: data.userInfo };
+      const text = await apiRes.text();
+      if (text && text.startsWith('{')) {
+        const data = JSON.parse(text);
+        if (data && data.userInfo && data.userInfo.user) {
+          return { statusCode: 0, userInfo: data.userInfo };
+        }
       }
     }
   } catch (err) {
     console.warn("TikTok public API failed:", err);
+  }
+
+  // Strategy 3: TikTok oEmbed API (Guaranteed public metadata)
+  try {
+    const oembedRes = await fetch(`https://www.tiktok.com/oembed?url=https://www.tiktok.com/@${encodeURIComponent(sanitizedUniqueId)}`);
+    if (oembedRes.ok) {
+      const data = await oembedRes.json();
+      if (data && data.author_name) {
+        return {
+          statusCode: 0,
+          userInfo: {
+            user: {
+              uniqueId: data.embed_product_id || sanitizedUniqueId,
+              nickname: data.author_name,
+              avatarThumb: "",
+              avatarLarger: "",
+              verified: false
+            },
+            stats: {
+              followerCount: 0,
+              heartCount: 0
+            }
+          }
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("TikTok oEmbed failed:", err);
   }
 
   // Strategy 3: RapidAPI (if RAPIDAPI_KEY is configured in env)
