@@ -7,6 +7,8 @@ import { rateLimit } from "express-rate-limit";
 import validator from "validator";
 import crypto from "crypto";
 
+import { getTikTokUserInfo } from "./api/_utils.js";
+
 dotenv.config();
 
 console.log('Token Loaded:', !!process.env.TIKTOK_ACCESS_TOKEN);
@@ -15,28 +17,33 @@ const app = express();
 app.set('trust proxy', true);
 const PORT = 3000;
 
-// CORS Configuration - Strict for production
+// CORS Configuration - Strict for production & Vercel
 const allowedOrigins = [
+  "https://daemstore.com",
+  "https://www.daemstore.com",
   "https://saudismm.com",
   "https://www.saudismm.com",
-  // Whitelisting preview URLs to ensure the app remains functional in the AI Studio environment
   "https://ais-dev-yd45tmitnmz4i3uznm2lex-594526045281.europe-west2.run.app",
   "https://ais-pre-yd45tmitnmz4i3uznm2lex-594526045281.europe-west2.run.app"
 ];
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or direct server-to-server calls)
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.includes(origin)) {
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.includes('vercel.app') ||
+      origin.includes('daemstore.com') ||
+      origin.includes('saudismm.com')
+    ) {
       callback(null, true);
     } else {
       console.warn(`CORS blocked request from origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
-  methods: ["GET", "POST", "PUT", "DELETE"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "x-rapidapi-key", "x-rapidapi-host"],
   credentials: true
 }));
@@ -250,34 +257,17 @@ app.get("/api/tiktok/user", checkoutLimiter, async (req, res) => {
   try {
     const { uniqueId } = req.query;
     if (!uniqueId || typeof uniqueId !== 'string') {
-      return res.status(400).json({ error: "uniqueId is required" });
+      return res.status(400).json({ statusCode: 400, error: "uniqueId is required" });
     }
 
-    // Sanitize TikTok uniqueId
-    const sanitizedUniqueId = validator.escape(validator.trim(uniqueId));
-
-    const apiKey = process.env.RAPIDAPI_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "RapidAPI key is missing" });
+    const data = await getTikTokUserInfo(uniqueId);
+    if (data.statusCode === 429) {
+      return res.status(429).json(data);
     }
-
-    const response = await fetch(`https://tiktok-api23.p.rapidapi.com/api/user/info?uniqueId=${sanitizedUniqueId}`, {
-      method: "GET",
-      headers: {
-        "x-rapidapi-key": apiKey,
-        "x-rapidapi-host": "tiktok-api23.p.rapidapi.com",
-      },
-    });
-
-    if (response.status === 429) {
-      return res.status(429).json({ error: "Quota exceeded" });
-    }
-
-    const data = await response.json();
     res.json(data);
   } catch (error) {
     console.error("TikTok API error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(500).json({ statusCode: 500, error: "Internal Server Error" });
   }
 });
 
