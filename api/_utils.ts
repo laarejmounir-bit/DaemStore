@@ -76,6 +76,25 @@ export async function getTikTokUserInfo(uniqueId: string) {
     return { statusCode: 400, error: "اسم المستخدم مطلوب" };
   }
 
+  // Pre-Check: Official TikTok oEmbed API (Guaranteed check for public accounts on all IPs)
+  let oembedNickname: string | null = null;
+  try {
+    const oembedRes = await fetch(`https://www.tiktok.com/oembed?url=https://www.tiktok.com/@${encodeURIComponent(sanitizedUniqueId)}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*'
+      }
+    });
+    if (oembedRes.ok) {
+      const odata = await oembedRes.json();
+      if (odata && odata.author_name) {
+        oembedNickname = odata.author_name;
+      }
+    }
+  } catch (err) {
+    console.warn("TikTok oEmbed pre-check failed:", err);
+  }
+
   // Strategy 1: Direct TikTok Web Scraping with User-Agent Fallbacks
   const userAgents = [
     'Mozilla/5.0 (iPhone; CPU iPhone OS 17_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Mobile/15E148 Safari/604.1',
@@ -148,14 +167,14 @@ export async function getTikTokUserInfo(uniqueId: string) {
             userInfo = {
               user: {
                 uniqueId: sanitizedUniqueId,
-                nickname: nicknameMatch ? nicknameMatch[1] : sanitizedUniqueId,
+                nickname: nicknameMatch ? nicknameMatch[1] : (oembedNickname || sanitizedUniqueId),
                 avatarThumb: avatarMatch ? avatarMatch[1] : '',
                 avatarLarger: avatarMatch ? avatarMatch[1] : '',
                 verified: verifiedMatch ? verifiedMatch[1] === 'true' : false
               },
               stats: {
-                followerCount: followerMatch ? parseInt(followerMatch[1], 10) : 0,
-                heartCount: heartMatch ? parseInt(heartMatch[1], 10) : 0
+                followerCount: followerMatch ? parseInt(followerMatch[1], 10) : null,
+                heartCount: heartMatch ? parseInt(heartMatch[1], 10) : null
               }
             };
           }
@@ -166,7 +185,6 @@ export async function getTikTokUserInfo(uniqueId: string) {
           if (userInfo.user.avatarLarger) userInfo.user.avatarLarger = cleanTikTokUrl(userInfo.user.avatarLarger);
           if (userInfo.user.avatarMedium) userInfo.user.avatarMedium = cleanTikTokUrl(userInfo.user.avatarMedium);
 
-          // Handle 32-bit integer overflow for large follower/heart counts
           if (userInfo.stats) {
             const s = userInfo.stats;
             const s2 = userInfo.statsV2 || {};
@@ -214,32 +232,24 @@ export async function getTikTokUserInfo(uniqueId: string) {
     console.warn("TikTok public API failed:", err);
   }
 
-  // Strategy 3: TikTok Official oEmbed API (Guaranteed Public Account Check)
-  try {
-    const oembedRes = await fetch(`https://www.tiktok.com/oembed?url=https://www.tiktok.com/@${encodeURIComponent(sanitizedUniqueId)}`);
-    if (oembedRes.ok) {
-      const odata = await oembedRes.json();
-      if (odata && odata.author_name) {
-        return {
-          statusCode: 0,
-          userInfo: {
-            user: {
-              uniqueId: sanitizedUniqueId,
-              nickname: odata.author_name,
-              avatarThumb: `https://ui-avatars.com/api/?name=${encodeURIComponent(odata.author_name)}&background=10b981&color=fff`,
-              avatarLarger: `https://ui-avatars.com/api/?name=${encodeURIComponent(odata.author_name)}&background=10b981&color=fff`,
-              verified: false
-            },
-            stats: {
-              followerCount: null,
-              heartCount: null
-            }
-          }
-        };
+  // If scraping & public detail API failed due to IP anti-bot, BUT oembed found nickname:
+  if (oembedNickname) {
+    return {
+      statusCode: 0,
+      userInfo: {
+        user: {
+          uniqueId: sanitizedUniqueId,
+          nickname: oembedNickname,
+          avatarThumb: `https://ui-avatars.com/api/?name=${encodeURIComponent(oembedNickname)}&background=10b981&color=fff`,
+          avatarLarger: `https://ui-avatars.com/api/?name=${encodeURIComponent(oembedNickname)}&background=10b981&color=fff`,
+          verified: false
+        },
+        stats: {
+          followerCount: null,
+          heartCount: null
+        }
       }
-    }
-  } catch (err) {
-    console.warn("TikTok oEmbed failed:", err);
+    };
   }
 
   // Strategy 3: RapidAPI (if RAPIDAPI_KEY is configured in env)
@@ -269,5 +279,5 @@ export async function getTikTokUserInfo(uniqueId: string) {
     }
   }
 
-  return { statusCode: 404, message: "لم يتم العثور على الحساب، تأكد من اسم المستخدم" };
+  return { statusCode: 404, error: "لم يتم العثور على الحساب، تأكد من اسم المستخدم" };
 }
