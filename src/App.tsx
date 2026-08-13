@@ -418,10 +418,13 @@ const findOptionByName = (name: string) => {
   return null;
 };
 
-const formatFollowers = (count: number) => {
-  if (count >= 1000000) return (count / 1000000).toFixed(1) + 'M';
-  if (count >= 1000) return (count / 1000).toFixed(1) + 'k';
-  return count.toString();
+const formatFollowers = (count: any) => {
+  if (count === undefined || count === null || count === '') return '0';
+  const num = typeof count === 'number' ? count : parseInt(String(count), 10);
+  if (isNaN(num)) return '0';
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
+  return num.toString();
 };
 
 function Home() {
@@ -599,7 +602,16 @@ function Home() {
   const customTotalPrice = customViews.price + customLikes.price + customSaves.price + customShares.price;
 
   useEffect(() => {
-    if (!targetLink || (selectedOption?.label !== 'متابعين' && selectedOption?.label !== 'مشتركين' && selectedOption?.label !== 'العروض القوية')) {
+    const isTikTokService = !activeService || activeService.id === 'tiktok';
+    const isUserField = selectedOption?.label?.includes('متابعين') || 
+                        selectedOption?.name?.includes('متابعين') || 
+                        selectedOption?.label?.includes('مشتركين') || 
+                        selectedOption?.name?.includes('مشتركين') || 
+                        selectedOption?.label?.includes('العروض') || 
+                        selectedOption?.name?.includes('العروض') ||
+                        (!targetLink.includes('/video/') && !targetLink.includes('/v/') && isTikTokService);
+
+    if (!targetLink || targetLink.trim().length < 2 || targetLink.includes('/video/') || targetLink.includes('/v/') || !isUserField) {
       setTiktokProfile(null);
       setTiktokError(null);
       return;
@@ -1093,16 +1105,16 @@ function Home() {
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="text-xs text-slate-500 uppercase tracking-[0.2em] font-bold mb-1">الباقة المختارة</div>
-                          <div className="text-xl font-bold text-white">{selectedPlan.name || `${selectedPlan.quantity} ${selectedOption.name}`}</div>
+                          <div className="text-xl font-bold text-white">{selectedPlan?.name || `${selectedPlan?.quantity || ''} ${selectedOption?.name || selectedOption?.label || ''}`}</div>
                         </div>
                         <div className="text-left">
                           <div className="text-xs text-slate-500 uppercase tracking-[0.2em] font-bold mb-1">السعر</div>
-                          <div className="text-2xl font-bold text-emerald-500">{selectedPlan.price} ر.س</div>
+                          <div className="text-2xl font-bold text-emerald-500">{selectedPlan?.price || '0'} ر.س</div>
                           <div className="text-[10px] text-slate-500 font-bold">شامل الضريبة</div>
                         </div>
                       </div>
 
-                      {selectedPlan.details && selectedPlan.details.length > 0 && (
+                      {selectedPlan?.details && selectedPlan.details.length > 0 && (
                         <div className="pt-4 border-t border-emerald-500/10">
                           <div className="text-xs text-slate-500 uppercase tracking-[0.2em] font-bold mb-3">تفاصيل الطلب</div>
                           <div className="flex flex-wrap gap-2">
@@ -1118,9 +1130,9 @@ function Home() {
 
                     <div className="space-y-2">
                       <label className="text-sm font-bold text-slate-300 mr-1">
-                        {selectedOption.label === 'متابعين' || selectedOption.label === 'مشتركين' || selectedOption.label === 'العروض القوية'
+                        {selectedOption?.label === 'متابعين' || selectedOption?.name === 'متابعين' || selectedOption?.label === 'مشتركين' || selectedOption?.name === 'مشتركين' || selectedOption?.label === 'العروض القوية' || selectedOption?.name === 'العروض القوية'
                           ? 'اسم المستخدم أو رابط الحساب' 
-                          : selectedOption.label === 'بكجات الاكسبلور'
+                          : selectedOption?.label === 'بكجات الاكسبلور' || selectedOption?.name === 'بكجات الاكسبلور'
                           ? 'رابط المقطع (الفيديو)'
                           : 'رابط الفيديو أو المنشور'}
                       </label>
@@ -1129,7 +1141,7 @@ function Home() {
                           type="text" 
                           value={targetLink}
                           onChange={(e) => setTargetLink(e.target.value)}
-                          placeholder={selectedOption.label === 'متابعين' || selectedOption.label === 'مشتركين' || selectedOption.label === 'العروض القوية'
+                          placeholder={selectedOption?.label === 'متابعين' || selectedOption?.name === 'متابعين' || selectedOption?.label === 'مشتركين' || selectedOption?.name === 'مشتركين' || selectedOption?.label === 'العروض القوية' || selectedOption?.name === 'العروض القوية'
                             ? '@اسم_المستخدم أو رابط الحساب' 
                             : 'https://vt.tiktok.com/ZSu7ekwF7'}
                           className="w-full bg-slate-950/50 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-emerald-500/50 transition-all"
@@ -1149,7 +1161,7 @@ function Home() {
                           </div>
                         )}
 
-                        {tiktokProfile && (
+                        {tiktokProfile && tiktokProfile.user && (
                           <motion.div 
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -1160,15 +1172,17 @@ function Home() {
                             
                             <div className="relative shrink-0">
                               <img 
-                                src={`/api/proxy-image?url=${encodeURIComponent(tiktokProfile.user.avatarThumb || tiktokProfile.user.avatarLarger || '')}`} 
-                                alt={tiktokProfile.user.nickname}
+                                src={(tiktokProfile.user?.avatarThumb || tiktokProfile.user?.avatarLarger) 
+                                  ? `/api/proxy-image?url=${encodeURIComponent(tiktokProfile.user?.avatarThumb || tiktokProfile.user?.avatarLarger || '')}` 
+                                  : 'https://picsum.photos/seed/avatar/200/200'} 
+                                alt={tiktokProfile.user?.nickname || 'Avatar'}
                                 className="w-14 h-14 rounded-full border-2 border-emerald-500/50 object-cover"
                                 referrerPolicy="no-referrer"
                                 onError={(e) => {
                                   (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/avatar/200/200';
                                 }}
                               />
-                              {tiktokProfile.user.verified && (
+                              {tiktokProfile.user?.verified && (
                                 <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-white p-0.5 rounded-full border-2 border-slate-900">
                                   <Check className="w-2.5 h-2.5" />
                                 </div>
@@ -1177,7 +1191,7 @@ function Home() {
                             
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-0.5">
-                                <h4 className="text-white font-bold truncate">{tiktokProfile.user.nickname}</h4>
+                                <h4 className="text-white font-bold truncate">{tiktokProfile.user?.nickname || tiktokProfile.user?.uniqueId || 'حساب تيك توك'}</h4>
                                 <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-emerald-500/20 flex items-center gap-1">
                                   <CheckCircle2 className="w-2.5 h-2.5" /> حساب موثق
                                 </span>
@@ -1185,11 +1199,11 @@ function Home() {
                               <div className="flex items-center gap-3 text-slate-400 text-xs">
                                 <div className="flex items-center gap-1">
                                   <Users className="w-3 h-3 text-emerald-500" />
-                                  <span className="font-bold">{formatFollowers(tiktokProfile.stats.followerCount)}</span> متابع
+                                  <span className="font-bold">{formatFollowers(tiktokProfile.stats?.followerCount)}</span> متابع
                                 </div>
                                 <div className="flex items-center gap-1">
                                   <Heart className="w-3 h-3 text-purple-500" />
-                                  <span className="font-bold">{formatFollowers(tiktokProfile.stats.heartCount || tiktokProfile.stats.followingCount)}</span> {tiktokProfile.stats.heartCount !== undefined ? 'إعجاب' : 'يتابع'}
+                                  <span className="font-bold">{formatFollowers(tiktokProfile.stats?.heartCount ?? tiktokProfile.stats?.heart ?? tiktokProfile.stats?.followingCount)}</span> {tiktokProfile.stats?.heartCount !== undefined ? 'إعجاب' : 'يتابع'}
                                 </div>
                               </div>
                             </div>
