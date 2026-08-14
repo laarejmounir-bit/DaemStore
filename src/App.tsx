@@ -750,8 +750,8 @@ function Home() {
             currency: 'SAR',
             reference: orderId,
             customer: {
-              name: customerName || 'Guest User',
-              email: customerEmail || 'guest@example.com',
+              name: customerName || 'عميل متجر دعم',
+              email: customerEmail || 'guest@daemstore.com',
               phone: formattedPhone
             },
             response_url: `${window.location.origin}/thankyou?payment_return=true`,
@@ -769,10 +769,17 @@ function Home() {
           })
         });
         
-        const data = await response.json();
+        const text = await response.text();
+        let data: any = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch (e) {
+          data = { error: 'استجابة غير صالحة من خادم الدفع', details: text };
+        }
         
-        if (response.ok && data.checkout_id && data.checkout_url) {
-          localStorage.setItem('last_checkout_id', data.checkout_id);
+        if (response.ok && (data.checkout_url || data.checkout_id)) {
+          const checkoutUrl = data.checkout_url || `https://pay.payzaty.com/payment/pay/${data.checkout_id}`;
+          localStorage.setItem('last_checkout_id', data.checkout_id || '');
           localStorage.setItem('last_order_reference', orderId);
           localStorage.setItem('last_checkout_plan', JSON.stringify(items));
           localStorage.setItem('last_customer_name', customerName);
@@ -781,23 +788,22 @@ function Home() {
           
           if (window.top && window.top !== window) {
             try {
-              window.top.location.href = data.checkout_url;
+              window.top.location.href = checkoutUrl;
             } catch (e) {
-              window.location.href = data.checkout_url;
+              window.location.href = checkoutUrl;
             }
           } else {
-            window.location.href = data.checkout_url;
+            window.location.href = checkoutUrl;
           }
         } else {
-          // Check for duplicate reference error
-          const errorMsg = (data.error || data.message || '').toLowerCase();
-          if (errorMsg.includes('duplicate') && attempts < maxAttempts) {
+          const errorMsg = String(data.error_text || data.error || data.message || '');
+          if (errorMsg.toLowerCase().includes('duplicate') && attempts < maxAttempts) {
             console.warn('Duplicate reference detected, retrying with new ID...');
             return attemptCheckout();
           }
           
           console.error('Checkout failed:', data);
-          setCheckoutError(data.error || 'حدث خطأ أثناء إنشاء الدفع. يرجى المحاولة مرة أخرى.');
+          setCheckoutError(data.error_text || data.error || data.details || 'حدث خطأ أثناء إنشاء رابط الدفع. يرجى المحاولة مرة أخرى.');
           setModalStep('error');
           setIsCheckingOut(false);
         }

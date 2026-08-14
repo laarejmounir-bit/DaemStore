@@ -45,8 +45,8 @@ export const Modals = () => {
           currency: 'SAR',
           reference: orderId,
           customer: {
-            name: customerName || 'Guest User',
-            email: 'guest@example.com',
+            name: customerName || 'عميل متجر دعم',
+            email: 'guest@daemstore.com',
             phone: formattedPhone
           },
           response_url: `${window.location.origin}/thankyou?payment_return=true`,
@@ -61,10 +61,17 @@ export const Modals = () => {
         })
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (e) {
+        data = { error: 'استجابة غير صالحة من خادم الدفع' };
+      }
 
-      if (response.ok && data.checkout_id && data.checkout_url) {
-        localStorage.setItem('last_checkout_id', data.checkout_id);
+      if (response.ok && (data.checkout_url || data.checkout_id)) {
+        const checkoutUrl = data.checkout_url || `https://pay.payzaty.com/payment/pay/${data.checkout_id}`;
+        localStorage.setItem('last_checkout_id', data.checkout_id || '');
         localStorage.setItem('last_order_reference', orderId);
         localStorage.setItem('last_checkout_plan', JSON.stringify(cart.map(item => ({
           plan: { name: item.planName, price: item.price, quantity: item.quantity },
@@ -76,15 +83,15 @@ export const Modals = () => {
 
         if (window.top && window.top !== window) {
           try {
-            window.top.location.href = data.checkout_url;
+            window.top.location.href = checkoutUrl;
           } catch (e) {
-            window.location.href = data.checkout_url;
+            window.location.href = checkoutUrl;
           }
         } else {
-          window.location.href = data.checkout_url;
+          window.location.href = checkoutUrl;
         }
       } else {
-        setCheckoutError(data.error || data.details || 'حدث خطأ أثناء إنشاء عملية الدفع.');
+        setCheckoutError(data.error_text || data.error || data.details || 'حدث خطأ أثناء إنشاء عملية الدفع.');
       }
     } catch (e: any) {
       setCheckoutError('تعذر الاتصال ببوابة الدفع. يرجى المحاولة مرة أخرى.');

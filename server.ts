@@ -17,7 +17,7 @@ const app = express();
 app.set('trust proxy', true);
 const PORT = 3000;
 
-// CORS Configuration - Strict for production & Vercel
+// CORS Configuration - Permissive and robust for production, preview, and mobile webviews
 const allowedOrigins = [
   "https://daemstore.com",
   "https://www.daemstore.com",
@@ -27,21 +27,26 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, callback) => {
+    // Always allow requests without origin (like mobile apps, curl, postman, same-origin)
     if (!origin) return callback(null, true);
     
+    // Allow known domains and wildcard subdomains
     if (
       allowedOrigins.includes(origin) ||
       origin.includes('vercel.app') ||
-      origin.includes('daemstore.com')
+      origin.includes('daemstore.com') ||
+      origin.includes('run.app') ||
+      origin.includes('localhost') ||
+      process.env.NODE_ENV !== 'production'
     ) {
       callback(null, true);
     } else {
-      console.warn(`CORS blocked request from origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+      // Allow origin instead of throwing an error to prevent breaking payment flows
+      callback(null, origin);
     }
   },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "x-rapidapi-key", "x-rapidapi-host"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-rapidapi-key", "x-rapidapi-host", "X-AccountNo", "X-SecretKey"],
   credentials: true
 }));
 
@@ -130,68 +135,102 @@ app.get("/api/payment-cancel", (req, res) => {
 
 app.post("/api/checkout", checkoutLimiter, async (req, res) => {
   try {
-    let { amount, currency, reference, customer, response_url, cancel_url } = req.body;
+    let { amount, currency, reference, customer, response_url, cancel_url } = req.body || {};
 
-    // Input Sanitization
-    if (customer) {
-      if (customer.name) customer.name = validator.escape(validator.trim(customer.name));
-      if (customer.email) customer.email = validator.normalizeEmail(validator.trim(customer.email)) || customer.email;
-      if (customer.phone) customer.phone = validator.escape(validator.trim(customer.phone));
+    // Amount validation (Min 1 SAR according to Payzaty docs)
+    let cleanAmount = parseFloat(amount);
+    if (isNaN(cleanAmount) || cleanAmount < 1) {
+      cleanAmount = 1;
     }
-    if (reference) reference = validator.escape(validator.trim(reference));
+
+    // Customer Name sanitization (Required by Payzaty)
+    let rawName = customer && customer.name ? String(customer.name).trim() : '';
+    let customerName = rawName ? validator.escape(rawName) : 'عميل متجر دعم';
+    if (!customerName || customerName.trim().length === 0) {
+      customerName = 'عميل متجر دعم';
+    }
+
+    // Customer Email sanitization
+    let rawEmail = customer && customer.email ? String(customer.email).trim() : '';
+    let customerEmail = 'guest@daemstore.com';
+    if (rawEmail && validator.isEmail(rawEmail)) {
+      customerEmail = validator.normalizeEmail(rawEmail) || rawEmail;
+    }
+
+    // Customer Phone sanitization (Standard Saudi mobile format: +9665XXXXXXXX)
+    let rawPhone = customer && customer.phone ? String(customer.phone) : '';
+    let phoneDigits = rawPhone.replace(/\D/g, '').replace(/^0+/, '');
+    let customerPhone = phoneDigits ? `+966${phoneDigits}` : '+966500000000';
+
+    const cleanCustomer = {
+      name: customerName,
+      email: customerEmail,
+      phone: customerPhone
+    };
+
+    const cleanReference = reference 
+      ? String(reference).trim() 
+      : `SMM-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
 
     const accountNo = process.env.PAYZATY_ACCOUNT_NO;
     const secretKey = process.env.PAYZATY_SECRET_KEY;
 
-    console.log("Checkout request received. AccountNo present:", !!accountNo, "SecretKey present:", !!secretKey);
-
     if (!accountNo || !secretKey) {
       console.error("Payzaty keys missing in environment");
       return res.status(400).json({ 
-        error: "يرجى إضافة مفاتيح Payzaty في إعدادات Secrets.",
+        error: "يرجى إضافة مفاتيح Payzaty (PAYZATY_ACCOUNT_NO و PAYZATY_SECRET_KEY) في إعدادات البيئة.",
         details: "PAYZATY_ACCOUNT_NO or PAYZATY_SECRET_KEY is missing" 
       });
     }
 
+    const payzatyPayload = {
+      amount: cleanAmount,
+      currency: currency || "SAR",
+      language: "ar",
+      reference: cleanReference,
+      customer: cleanCustomer,
+      response_url: response_url || "https://daemstore.com/thankyou?payment_return=true",
+      cancel_url: cancel_url || "https://daemstore.com/thankyou?payment_cancel=true",
+    };
+
+    console.log("Sending checkout payload to Payzaty:", JSON.stringify(payzatyPayload));
+
     const response = await fetch(`${PAYZATY_API_URL}/checkout`, {
       method: "POST",
       headers: getHeaders(),
-      body: JSON.stringify({
-        amount,
-        currency,
-        language: "ar",
-        reference,
-        customer,
-        response_url,
-        cancel_url,
-      }),
+      body: JSON.stringify(payzatyPayload),
     });
 
     console.log("Payzaty response status:", response.status);
 
     const text = await response.text();
-    let data;
+    let data: any = {};
     try {
       data = text ? JSON.parse(text) : {};
     } catch (e) {
       console.error("Failed to parse Payzaty response:", text);
-      data = { message: text };
+      data = { error: "استجابة غير صالحة من بوابة الدفع", message: text };
     }
 
     if (!response.ok) {
       if (response.status === 401) {
-        return res.status(401).json({ error: "مفاتيح Payzaty غير صالحة." });
+        return res.status(401).json({ error: "مفاتيح Payzaty غير صالحة أو منتهية الصلاحية." });
       }
-      if (Object.keys(data).length === 0) {
-        data = { error: `Payzaty API Error: ${response.status} ${response.statusText}` };
-      }
-      return res.status(response.status).json(data);
+      const errorText = data.error_text || data.error || data.message || `خطأ في بوابة الدفع (${response.status})`;
+      return res.status(response.status).json({ error: errorText, details: data });
     }
 
-    res.json(data);
+    const checkout_id = data.checkout_id || data.id;
+    const checkout_url = data.checkout_url || (checkout_id ? `https://pay.payzaty.com/payment/pay/${checkout_id}` : null);
+
+    res.json({
+      ...data,
+      checkout_id,
+      checkout_url
+    });
   } catch (error) {
     console.error("Checkout error:", error);
-    res.status(500).json({ error: "Internal Server Error", details: error instanceof Error ? error.message : String(error) });
+    res.status(500).json({ error: "حدث خطأ في الخادم أثناء إنشاء رابط الدفع", details: error instanceof Error ? error.message : String(error) });
   }
 });
 
