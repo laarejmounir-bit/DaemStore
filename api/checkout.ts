@@ -40,7 +40,13 @@ export default async function handler(req: any, res: any) {
 
   if (req.method === 'POST') {
     try {
-      let { amount, currency, reference, customer, response_url, cancel_url } = req.body || {};
+      let body = req.body;
+      if (typeof body === 'string') {
+        try {
+          body = JSON.parse(body);
+        } catch (e) {}
+      }
+      let { amount, currency, reference, customer, response_url, cancel_url } = body || {};
 
       const defaultDomain = "https://www.daemstore.com";
       if (!response_url || response_url.includes("localhost") || response_url.includes("127.0.0.1")) {

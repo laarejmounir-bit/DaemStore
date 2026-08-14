@@ -1,23 +1,17 @@
 import crypto from 'crypto';
 
 export function setCorsHeaders(req: any, res: any) {
-  const origin = req.headers?.origin || req.headers?.referer || '';
-  
-  const allowedOrigins = [
-    "https://daemstore.com",
-    "https://www.daemstore.com",
-    "https://ais-dev-yd45tmitnmz4i3uznm2lex-594526045281.europe-west2.run.app",
-    "https://ais-pre-yd45tmitnmz4i3uznm2lex-594526045281.europe-west2.run.app"
-  ];
+  const reqOrigin = req.headers?.origin || req.headers?.referer || '';
+  let allowOrigin = "https://www.daemstore.com";
 
-  let allowOrigin = '*';
-  if (origin) {
-    const isAllowed = allowedOrigins.some(o => origin.startsWith(o)) ||
-      origin.includes('vercel.app') ||
-      origin.includes('daemstore.com');
-
-    if (isAllowed) {
-      allowOrigin = origin;
+  if (reqOrigin) {
+    try {
+      if (reqOrigin.startsWith('http')) {
+        const parsed = new URL(reqOrigin);
+        allowOrigin = parsed.origin;
+      }
+    } catch (e) {
+      allowOrigin = reqOrigin;
     }
   }
 
@@ -59,15 +53,25 @@ export async function resolveTikTokUsername(input: string): Promise<string> {
   let cleaned = input.trim();
   if (!cleaned) return '';
 
-  if (cleaned.includes('tiktok.com')) {
-    const match = cleaned.match(/@([^/?#]+)/);
-    if (match) return match[1];
+  const atMatch = cleaned.match(/@([a-zA-Z0-9_.-]+)/);
+  if (atMatch && atMatch[1] && atMatch[1] !== 'video') {
+    return atMatch[1];
+  }
 
+  if (cleaned.includes('tiktok.com')) {
     try {
-      const res = await fetch(cleaned, { method: 'HEAD', redirect: 'follow' });
+      const res = await fetch(cleaned, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15'
+        },
+        redirect: 'follow'
+      });
       const finalUrl = res.url;
-      const match2 = finalUrl.match(/@([^/?#]+)/);
-      if (match2) return match2[1];
+      const match2 = finalUrl.match(/@([a-zA-Z0-9_.-]+)/);
+      if (match2 && match2[1] && match2[1] !== 'video') {
+        return match2[1];
+      }
     } catch (e) {
       console.warn("Failed to resolve TikTok redirect link:", e);
     }
@@ -82,119 +86,34 @@ export async function getTikTokUserInfo(uniqueId: string) {
     return { statusCode: 400, error: "اسم المستخدم مطلوب" };
   }
 
-  // Strategy 1: Direct TikTok Web Scraping with User-Agent Fallbacks
-  const userAgents = [
-    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-  ];
-
-  for (const ua of userAgents) {
+  // Strategy 1: RapidAPI (Fastest & Most Reliable on Vercel Datacenter IPs)
+  const apiKey = process.env.RAPIDAPI_KEY || "ff0ef58029mshac4364076b77377p14120djsnedfe9f855d27";
+  if (apiKey) {
     try {
-      const webRes = await fetch(`https://www.tiktok.com/@${encodeURIComponent(sanitizedUniqueId)}`, {
+      const rapidRes = await fetch(`https://tiktok-api23.p.rapidapi.com/api/user/info?uniqueId=${encodeURIComponent(sanitizedUniqueId)}`, {
+        method: "GET",
         headers: {
-          'User-Agent': ua,
-          'Accept-Language': 'ar-SA,ar;q=0.9,en-US;q=0.8,en;q=0.7',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-          'Sec-Fetch-Dest': 'document',
-          'Sec-Fetch-Mode': 'navigate',
-          'Sec-Fetch-Site': 'none',
-          'Sec-Fetch-User': '?1',
-          'Upgrade-Insecure-Requests': '1',
-          'Cache-Control': 'no-cache'
-        }
+          "x-rapidapi-key": apiKey,
+          "x-rapidapi-host": "tiktok-api23.p.rapidapi.com",
+        },
       });
 
-      if (webRes.ok && !webRes.url.includes('/login')) {
-        const html = await webRes.text();
-        let userInfo: any = null;
-
-        // Pattern 1: __UNIVERSAL_DATA_FOR_REHYDRATION__
-        const match1 = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application\/json">(.*?)<\/script>/s);
-        if (match1 && match1[1]) {
-          try {
-            const parsed = JSON.parse(match1[1]);
-            const scope = parsed['__DEFAULT_SCOPE__'] || {};
-            userInfo = scope['webapp.user-detail']?.userInfo || scope['page.user-detail']?.userInfo;
-          } catch (e) {
-            console.warn("Parse error for __UNIVERSAL_DATA_FOR_REHYDRATION__:", e);
-          }
-        }
-
-        // Pattern 2: SIGI_STATE
-        if (!userInfo || !userInfo.user) {
-          const match2 = html.match(/<script id="SIGI_STATE" type="application\/json">(.*?)<\/script>/s);
-          if (match2 && match2[1]) {
-            try {
-              const parsed = JSON.parse(match2[1]);
-              const UserModule = parsed.UserModule || {};
-              const users = UserModule.users || {};
-              const stats = UserModule.stats || {};
-              const userObj = users[sanitizedUniqueId] || Object.values(users)[0];
-              const statsObj = stats[sanitizedUniqueId] || Object.values(stats)[0];
-              if (userObj) {
-                userInfo = { user: userObj, stats: statsObj || {} };
-              }
-            } catch (e) {
-              console.warn("Parse error for SIGI_STATE:", e);
-            }
-          }
-        }
-
-        // Pattern 3: Direct Regex Fallback on HTML
-        if (!userInfo || !userInfo.user) {
-          const avatarMatch = html.match(/"avatarLarger":"([^"]+)"/) || html.match(/"avatarThumb":"([^"]+)"/) || html.match(/"avatarMedium":"([^"]+)"/);
-          const nicknameMatch = html.match(/"nickname":"([^"]+)"/);
-          const followerMatch = html.match(/"followerCount":(\d+)/);
-          const heartMatch = html.match(/"heartCount":(\d+)/) || html.match(/"heart":(\d+)/);
-          const verifiedMatch = html.match(/"verified":(true|false)/);
-
-          if (avatarMatch || followerMatch || nicknameMatch) {
-            userInfo = {
-              user: {
-                uniqueId: sanitizedUniqueId,
-                nickname: nicknameMatch ? nicknameMatch[1] : sanitizedUniqueId,
-                avatarThumb: avatarMatch ? avatarMatch[1] : '',
-                avatarLarger: avatarMatch ? avatarMatch[1] : '',
-                verified: verifiedMatch ? verifiedMatch[1] === 'true' : false
-              },
-              stats: {
-                followerCount: followerMatch ? parseInt(followerMatch[1], 10) : null,
-                heartCount: heartMatch ? parseInt(heartMatch[1], 10) : null
-              }
-            };
-          }
-        }
-
-        if (userInfo && userInfo.user) {
-          if (userInfo.user.avatarThumb) userInfo.user.avatarThumb = cleanTikTokUrl(userInfo.user.avatarThumb);
-          if (userInfo.user.avatarLarger) userInfo.user.avatarLarger = cleanTikTokUrl(userInfo.user.avatarLarger);
-          if (userInfo.user.avatarMedium) userInfo.user.avatarMedium = cleanTikTokUrl(userInfo.user.avatarMedium);
-
-          if (userInfo.stats) {
-            const s = userInfo.stats;
-            const s2 = userInfo.statsV2 || {};
-
-            if (s2.followerCount) s.followerCount = parseInt(s2.followerCount, 10);
-            else if (typeof s.followerCount === 'number' && s.followerCount < 0) s.followerCount += 4294967296;
-
-            if (s2.heartCount) s.heartCount = parseInt(s2.heartCount, 10);
-            else if (s2.heart) s.heartCount = parseInt(s2.heart, 10);
-            else if (typeof s.heartCount === 'number' && s.heartCount < 0) s.heartCount += 4294967296;
-            else if (typeof s.heart === 'number' && s.heart < 0) s.heartCount = s.heart + 4294967296;
-            else if (s.heart && !s.heartCount) s.heartCount = s.heart;
-          }
-
-          return { statusCode: 0, userInfo };
+      if (rapidRes.status === 429) {
+        console.warn("RapidAPI quota exceeded, falling back to scrapers");
+      } else if (rapidRes.ok) {
+        const data = await rapidRes.json();
+        if (data && data.userInfo && data.userInfo.user) {
+          if (data.userInfo.user.avatarThumb) data.userInfo.user.avatarThumb = cleanTikTokUrl(data.userInfo.user.avatarThumb);
+          if (data.userInfo.user.avatarLarger) data.userInfo.user.avatarLarger = cleanTikTokUrl(data.userInfo.user.avatarLarger);
+          return { statusCode: 0, userInfo: data.userInfo };
         }
       }
     } catch (err) {
-      console.warn(`TikTok web scraping with UA failed:`, err);
+      console.warn("RapidAPI lookup failed:", err);
     }
   }
 
-  // Strategy 2: TikTok Embed Page Scraping (Highly reliable fallback for avatar, stats, nickname)
+  // Strategy 2: TikTok Embed Page Scraping
   try {
     const embedRes = await fetch(`https://www.tiktok.com/embed/@${encodeURIComponent(sanitizedUniqueId)}`, {
       headers: {
@@ -243,32 +162,7 @@ export async function getTikTokUserInfo(uniqueId: string) {
     console.warn("TikTok embed scraping failed:", err);
   }
 
-  // Strategy 3: TikTok Public Web API
-  try {
-    const apiRes = await fetch(`https://www.tiktok.com/api/user/detail/?uniqueId=${encodeURIComponent(sanitizedUniqueId)}`, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1',
-        'Referer': `https://www.tiktok.com/@${encodeURIComponent(sanitizedUniqueId)}`,
-        'Accept': 'application/json, text/plain, */*'
-      }
-    });
-
-    if (apiRes.ok) {
-      const text = await apiRes.text();
-      if (text && text.startsWith('{')) {
-        const data = JSON.parse(text);
-        if (data && data.userInfo && data.userInfo.user) {
-          if (data.userInfo.user.avatarThumb) data.userInfo.user.avatarThumb = cleanTikTokUrl(data.userInfo.user.avatarThumb);
-          if (data.userInfo.user.avatarLarger) data.userInfo.user.avatarLarger = cleanTikTokUrl(data.userInfo.user.avatarLarger);
-          return { statusCode: 0, userInfo: data.userInfo };
-        }
-      }
-    }
-  } catch (err) {
-    console.warn("TikTok public API failed:", err);
-  }
-
-  // Strategy 4: TikTok oEmbed Check with Embed Image Fallback
+  // Strategy 3: TikTok oEmbed Check
   try {
     const oembedRes = await fetch(`https://www.tiktok.com/oembed?url=https://www.tiktok.com/@${encodeURIComponent(sanitizedUniqueId)}`, {
       headers: {
@@ -279,40 +173,20 @@ export async function getTikTokUserInfo(uniqueId: string) {
     if (oembedRes.ok) {
       const odata = await oembedRes.json();
       if (odata && odata.author_name) {
-        // Try to get avatar and stats from embed page if possible
-        let avatarUrl = '';
-        let followerCount: number | null = null;
-        let heartCount: number | null = null;
-
-        try {
-          const emb = await fetch(`https://www.tiktok.com/embed/@${encodeURIComponent(sanitizedUniqueId)}`);
-          if (emb.ok) {
-            const h = await emb.text();
-            const av = h.match(/"(https:\/\/[^"]*avt[^"]*)"/);
-            if (av) avatarUrl = cleanTikTokUrl(av[1]);
-            const fl = h.match(/"followerCount":(\d+)/) || h.match(/"followers":(\d+)/);
-            if (fl) followerCount = parseInt(fl[1], 10);
-            const ht = h.match(/"heartCount":(\d+)/) || h.match(/"heart":(\d+)/) || h.match(/"likes":(\d+)/);
-            if (ht) heartCount = parseInt(ht[1], 10);
-          }
-        } catch (e) {
-          console.warn("oEmbed avatar lookup failed:", e);
-        }
-
         return {
           statusCode: 0,
           userInfo: {
             user: {
               uniqueId: sanitizedUniqueId,
               nickname: odata.author_name,
-              avatarThumb: avatarUrl,
-              avatarLarger: avatarUrl,
-              avatarMedium: avatarUrl,
+              avatarThumb: '',
+              avatarLarger: '',
+              avatarMedium: '',
               verified: false
             },
             stats: {
-              followerCount,
-              heartCount
+              followerCount: null,
+              heartCount: null
             }
           }
         };
@@ -322,34 +196,6 @@ export async function getTikTokUserInfo(uniqueId: string) {
     console.warn("TikTok oEmbed check failed:", err);
   }
 
-  // Strategy 4: RapidAPI (if RAPIDAPI_KEY is configured in env or fallback)
-  const apiKey = process.env.RAPIDAPI_KEY || "ff0ef58029mshac4364076b77377p14120djsnedfe9f855d27";
-  if (apiKey) {
-    try {
-      const rapidRes = await fetch(`https://tiktok-api23.p.rapidapi.com/api/user/info?uniqueId=${encodeURIComponent(sanitizedUniqueId)}`, {
-        method: "GET",
-        headers: {
-          "x-rapidapi-key": apiKey,
-          "x-rapidapi-host": "tiktok-api23.p.rapidapi.com",
-        },
-      });
-
-      if (rapidRes.status === 429) {
-        return { statusCode: 429, error: "Quota exceeded" };
-      }
-
-      if (rapidRes.ok) {
-        const data = await rapidRes.json();
-        if (data && data.userInfo) {
-          if (data.userInfo.user?.avatarThumb) data.userInfo.user.avatarThumb = cleanTikTokUrl(data.userInfo.user.avatarThumb);
-          if (data.userInfo.user?.avatarLarger) data.userInfo.user.avatarLarger = cleanTikTokUrl(data.userInfo.user.avatarLarger);
-          return data;
-        }
-      }
-    } catch (err) {
-      console.warn("RapidAPI lookup failed:", err);
-    }
-  }
-
   return { statusCode: 404, error: "لم يتم العثور على الحساب، تأكد من اسم المستخدم" };
 }
+
