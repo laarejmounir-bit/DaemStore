@@ -48,6 +48,25 @@ export default async function handler(req: any, res: any) {
       }
       let { amount, currency, reference, customer, response_url, cancel_url } = body || {};
 
+      if (customer) {
+        if (!customer.name) customer.name = "عميل داعم";
+        if (!customer.email || !customer.email.includes('@')) customer.email = "guest@daemstore.com";
+        if (customer.phone) {
+          let p = String(customer.phone).replace(/\D/g, '');
+          if (p.startsWith('966')) p = p.slice(3);
+          if (p.startsWith('0')) p = p.slice(1);
+          customer.phone = `+966${p || '500000000'}`;
+        } else {
+          customer.phone = "+966500000000";
+        }
+      } else {
+        customer = {
+          name: "عميل داعم",
+          email: "guest@daemstore.com",
+          phone: "+966500000000"
+        };
+      }
+
       const defaultDomain = "https://www.daemstore.com";
       if (!response_url || response_url.includes("localhost") || response_url.includes("127.0.0.1")) {
         response_url = `${defaultDomain}/thankyou?payment_return=true`;

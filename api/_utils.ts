@@ -101,11 +101,14 @@ export async function getTikTokUserInfo(uniqueId: string) {
       if (rapidRes.status === 429) {
         console.warn("RapidAPI quota exceeded, falling back to scrapers");
       } else if (rapidRes.ok) {
-        const data = await rapidRes.json();
-        if (data && data.userInfo && data.userInfo.user) {
-          if (data.userInfo.user.avatarThumb) data.userInfo.user.avatarThumb = cleanTikTokUrl(data.userInfo.user.avatarThumb);
-          if (data.userInfo.user.avatarLarger) data.userInfo.user.avatarLarger = cleanTikTokUrl(data.userInfo.user.avatarLarger);
-          return { statusCode: 0, userInfo: data.userInfo };
+        const text = await rapidRes.text();
+        if (text && text.startsWith('{')) {
+          const data = JSON.parse(text);
+          if (data && data.userInfo && data.userInfo.user) {
+            if (data.userInfo.user.avatarThumb) data.userInfo.user.avatarThumb = cleanTikTokUrl(data.userInfo.user.avatarThumb);
+            if (data.userInfo.user.avatarLarger) data.userInfo.user.avatarLarger = cleanTikTokUrl(data.userInfo.user.avatarLarger);
+            return { statusCode: 0, userInfo: data.userInfo };
+          }
         }
       }
     } catch (err) {
