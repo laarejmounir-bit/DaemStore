@@ -30,6 +30,36 @@ export function setCorsHeaders(req: any, res: any) {
   return false;
 }
 
+export function getPayzatyConfig() {
+  const accountNo = process.env.PAYZATY_ACCOUNT_NO;
+  const secretKey = process.env.PAYZATY_SECRET_KEY;
+  const apiUrl = process.env.PAYZATY_ENV === "sandbox" 
+    ? "https://api.sandbox.payzaty.com" 
+    : "https://api.payzaty.com";
+
+  if (!accountNo || !secretKey) {
+    return {
+      isConfigured: false,
+      accountNo: '',
+      secretKey: '',
+      apiUrl,
+      headers: { "Content-Type": "application/json" }
+    };
+  }
+
+  return {
+    isConfigured: true,
+    accountNo,
+    secretKey,
+    apiUrl,
+    headers: {
+      "X-AccountNo": accountNo,
+      "X-SecretKey": secretKey,
+      "Content-Type": "application/json",
+    }
+  };
+}
+
 export function cleanTikTokUrl(url: string): string {
   if (!url) return '';
   let cleaned = String(url).trim();
@@ -87,20 +117,29 @@ export async function getTikTokUserInfo(uniqueId: string) {
   }
 
   // Strategy 1: RapidAPI (Fastest & Most Reliable on Vercel Datacenter IPs)
-  const apiKey = process.env.RAPIDAPI_KEY || "ff0ef58029mshac4364076b77377p14120djsnedfe9f855d27";
+  const apiKey = process.env.RAPIDAPI_KEY;
+  const apiHost = process.env.RAPIDAPI_HOST || "tiktok-api23.p.rapidapi.com";
   if (apiKey) {
     try {
-      const rapidRes = await fetch(`https://tiktok-api23.p.rapidapi.com/api/user/info?uniqueId=${encodeURIComponent(sanitizedUniqueId)}`, {
+      const rapidRes = await fetch(`https://${apiHost}/api/user/info?uniqueId=${encodeURIComponent(sanitizedUniqueId)}`, {
         method: "GET",
         headers: {
           "x-rapidapi-key": apiKey,
-          "x-rapidapi-host": "tiktok-api23.p.rapidapi.com",
+          "x-rapidapi-host": apiHost,
         },
       });
 
-      if (rapidRes.status === 429) {
-        console.warn("RapidAPI quota exceeded, falling back to scrapers");
-      } else if (rapidRes.ok) {
+      if (rapidRes.status === 401) {
+        console.error("[RapidAPI Error 401] Unauthorized: Invalid RAPIDAPI_KEY configured");
+      } else if (rapidRes.status === 403) {
+        console.error("[RapidAPI Error 403] Forbidden: Check RAPIDAPI subscription or host permissions");
+      } else if (rapidRes.status === 404) {
+        console.warn(`[RapidAPI 404] Endpoint not found or user '@${sanitizedUniqueId}' not found`);
+      } else if (rapidRes.status === 429) {
+        console.warn("[RapidAPI Warning 429] Rate limit/quota exceeded, initiating fallback strategies");
+      } else if (!rapidRes.ok) {
+        console.error(`[RapidAPI Error ${rapidRes.status}] ${rapidRes.statusText}`);
+      } else {
         const text = await rapidRes.text();
         if (text && text.startsWith('{')) {
           const data = JSON.parse(text);
@@ -112,8 +151,10 @@ export async function getTikTokUserInfo(uniqueId: string) {
         }
       }
     } catch (err) {
-      console.warn("RapidAPI lookup failed:", err);
+      console.error("[RapidAPI Fetch Error]:", err instanceof Error ? err.message : "Network error");
     }
+  } else {
+    console.warn("[RapidAPI Warning] RAPIDAPI_KEY environment variable is not defined");
   }
 
   // Strategy 2: TikTok Embed Page Scraping

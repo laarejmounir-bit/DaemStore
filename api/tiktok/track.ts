@@ -14,12 +14,22 @@ export default async function handler(req: any, res: any) {
       return res.status(204).end();
     }
 
-    const { event, event_id, user, properties } = req.body || {};
-    const accessToken = process.env.TIKTOK_ACCESS_TOKEN;
-    const pixelId = "D6JRT6BC77UEPBE531G0";
+    let body = req.body;
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body);
+      } catch (e) {
+        return res.status(400).json({ error: "Invalid JSON payload" });
+      }
+    }
 
-    if (!accessToken) {
-      return res.status(500).json({ error: "TikTok CAPI not configured" });
+    const { event, event_id, user, properties } = body || {};
+    const accessToken = process.env.TIKTOK_ACCESS_TOKEN;
+    const pixelId = process.env.TIKTOK_PIXEL_ID;
+
+    if (!accessToken || !pixelId) {
+      console.warn("TikTok CAPI Warning: Missing required environment variable: TIKTOK_ACCESS_TOKEN or TIKTOK_PIXEL_ID");
+      return res.status(500).json({ error: "Missing required environment variable: TIKTOK_ACCESS_TOKEN or TIKTOK_PIXEL_ID" });
     }
 
     const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket?.remoteAddress || '1.1.1.1';
@@ -66,7 +76,7 @@ export default async function handler(req: any, res: any) {
     const data = await response.json();
     return res.status(response.status).json(data);
   } catch (error) {
-    console.error("TikTok CAPI Proxy Error:", error);
+    console.error("TikTok CAPI Proxy Error:", error instanceof Error ? error.message : "Unknown error");
     return res.status(500).json({ error: "Internal Server Error" });
   }
 }

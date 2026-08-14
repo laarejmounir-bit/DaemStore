@@ -1,52 +1,56 @@
-import { setCorsHeaders } from './_utils';
-
-const PAYZATY_API_URL = process.env.PAYZATY_ENV === "sandbox" 
-  ? "https://api.sandbox.payzaty.com" 
-  : "https://api.payzaty.com";
-
-const getHeaders = () => {
-  const accountNo = process.env.PAYZATY_ACCOUNT_NO || "134221";
-  const secretKey = process.env.PAYZATY_SECRET_KEY || "sk_111d55e9e3f0434fa0ed1495e5f3ea12";
-  
-  return {
-    "X-AccountNo": accountNo,
-    "X-SecretKey": secretKey,
-    "Content-Type": "application/json",
-  };
-};
+import { setCorsHeaders, getPayzatyConfig } from './_utils';
 
 export default async function handler(req: any, res: any) {
   if (setCorsHeaders(req, res)) return;
 
+  const payzaty = getPayzatyConfig();
+
   if (req.method === 'GET') {
     try {
-      const id = req.query.id || req.query.slug || req.url.split('/').pop();
-      if (!id) {
-        return res.status(400).json({ error: "Checkout ID required" });
+      if (!payzaty.isConfigured) {
+        console.error("Payzaty Error: Missing PAYZATY_ACCOUNT_NO or PAYZATY_SECRET_KEY in server environment");
+        return res.status(500).json({ error: "Missing required environment variable: PAYZATY_ACCOUNT_NO or PAYZATY_SECRET_KEY" });
       }
 
-      const response = await fetch(`${PAYZATY_API_URL}/checkout/${id}`, {
+      const id = req.query?.id || req.query?.slug || req.url?.split('?')[0].split('/').pop();
+      if (!id) {
+        return res.status(400).json({ error: "Checkout ID is required" });
+      }
+
+      const response = await fetch(`${payzaty.apiUrl}/checkout/${encodeURIComponent(id)}`, {
         method: "GET",
-        headers: getHeaders(),
+        headers: payzaty.headers,
       });
 
       const data = await response.json();
       return res.status(response.status).json(data);
     } catch (error) {
-      console.error("Get checkout error:", error);
+      console.error("Get checkout error:", error instanceof Error ? error.message : "Unknown error");
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
 
   if (req.method === 'POST') {
     try {
+      if (!payzaty.isConfigured) {
+        console.error("Payzaty Error: Missing PAYZATY_ACCOUNT_NO or PAYZATY_SECRET_KEY in server environment");
+        return res.status(500).json({ error: "Missing required environment variable: PAYZATY_ACCOUNT_NO or PAYZATY_SECRET_KEY" });
+      }
+
       let body = req.body;
       if (typeof body === 'string') {
         try {
           body = JSON.parse(body);
-        } catch (e) {}
+        } catch (e) {
+          return res.status(400).json({ error: "Invalid JSON payload" });
+        }
       }
+      
       let { amount, currency, reference, customer, response_url, cancel_url } = body || {};
+
+      if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+        return res.status(400).json({ error: "Invalid or missing payment amount" });
+      }
 
       if (customer) {
         if (!customer.name) customer.name = "عميل داعم";
@@ -75,17 +79,14 @@ export default async function handler(req: any, res: any) {
         cancel_url = `${defaultDomain}/thankyou?payment_cancel=true`;
       }
 
-      const accountNo = process.env.PAYZATY_ACCOUNT_NO || "134221";
-      const secretKey = process.env.PAYZATY_SECRET_KEY || "sk_111d55e9e3f0434fa0ed1495e5f3ea12";
-
-      const response = await fetch(`${PAYZATY_API_URL}/checkout`, {
+      const response = await fetch(`${payzaty.apiUrl}/checkout`, {
         method: "POST",
-        headers: getHeaders(),
+        headers: payzaty.headers,
         body: JSON.stringify({
-          amount,
-          currency,
+          amount: Number(amount),
+          currency: currency || "SAR",
           language: "ar",
-          reference,
+          reference: reference || `REF-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
           customer,
           response_url,
           cancel_url,
@@ -93,16 +94,24 @@ export default async function handler(req: any, res: any) {
       });
 
       const text = await response.text();
-      let data;
+      let data: any;
       try {
         data = text ? JSON.parse(text) : {};
       } catch (e) {
         data = { message: text };
       }
 
+      if (!response.ok) {
+        console.error("Payzaty checkout creation failed:", {
+          status: response.status,
+          statusText: response.statusText,
+          response: data
+        });
+      }
+
       return res.status(response.status).json(data);
     } catch (error) {
-      console.error("Checkout error:", error);
+      console.error("Checkout error:", error instanceof Error ? error.message : "Unknown error");
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
