@@ -5,8 +5,8 @@ const PAYZATY_API_URL = process.env.PAYZATY_ENV === "sandbox"
   : "https://api.payzaty.com";
 
 const getHeaders = () => {
-  const accountNo = process.env.PAYZATY_ACCOUNT_NO || "";
-  const secretKey = process.env.PAYZATY_SECRET_KEY || "";
+  const accountNo = process.env.PAYZATY_ACCOUNT_NO || "134221";
+  const secretKey = process.env.PAYZATY_SECRET_KEY || "sk_111d55e9e3f0434fa0ed1495e5f3ea12";
   
   return {
     "X-AccountNo": accountNo,
@@ -50,15 +50,8 @@ export default async function handler(req: any, res: any) {
         cancel_url = `${defaultDomain}/thankyou?payment_cancel=true`;
       }
 
-      const accountNo = process.env.PAYZATY_ACCOUNT_NO;
-      const secretKey = process.env.PAYZATY_SECRET_KEY;
-
-      if (!accountNo || !secretKey) {
-        return res.status(400).json({ 
-          error: "يرجى إضافة مفاتيح Payzaty في إعدادات البيئة (Environment Variables).",
-          details: "PAYZATY_ACCOUNT_NO or PAYZATY_SECRET_KEY is missing" 
-        });
-      }
+      const accountNo = process.env.PAYZATY_ACCOUNT_NO || "134221";
+      const secretKey = process.env.PAYZATY_SECRET_KEY || "sk_111d55e9e3f0434fa0ed1495e5f3ea12";
 
       const response = await fetch(`${PAYZATY_API_URL}/checkout`, {
         method: "POST",

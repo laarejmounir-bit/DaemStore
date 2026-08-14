@@ -322,8 +322,8 @@ export async function getTikTokUserInfo(uniqueId: string) {
     console.warn("TikTok oEmbed check failed:", err);
   }
 
-  // Strategy 4: RapidAPI (if RAPIDAPI_KEY is configured in env)
-  const apiKey = process.env.RAPIDAPI_KEY;
+  // Strategy 4: RapidAPI (if RAPIDAPI_KEY is configured in env or fallback)
+  const apiKey = process.env.RAPIDAPI_KEY || "ff0ef58029mshac4364076b77377p14120djsnedfe9f855d27";
   if (apiKey) {
     try {
       const rapidRes = await fetch(`https://tiktok-api23.p.rapidapi.com/api/user/info?uniqueId=${encodeURIComponent(sanitizedUniqueId)}`, {

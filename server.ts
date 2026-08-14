@@ -88,8 +88,8 @@ const PAYZATY_API_URL = process.env.PAYZATY_ENV === "sandbox"
   : "https://api.payzaty.com";
 
 const getHeaders = () => {
-  const accountNo = process.env.PAYZATY_ACCOUNT_NO || "";
-  const secretKey = process.env.PAYZATY_SECRET_KEY || "";
+  const accountNo = process.env.PAYZATY_ACCOUNT_NO || "134221";
+  const secretKey = process.env.PAYZATY_SECRET_KEY || "sk_111d55e9e3f0434fa0ed1495e5f3ea12";
   
   return {
     "X-AccountNo": accountNo,
@@ -148,18 +148,8 @@ app.post("/api/checkout", checkoutLimiter, async (req, res) => {
     }
     if (reference) reference = validator.escape(validator.trim(reference));
 
-    const accountNo = process.env.PAYZATY_ACCOUNT_NO;
-    const secretKey = process.env.PAYZATY_SECRET_KEY;
-
-    console.log("Checkout request received. AccountNo present:", !!accountNo, "SecretKey present:", !!secretKey);
-
-    if (!accountNo || !secretKey) {
-      console.error("Payzaty keys missing in environment");
-      return res.status(400).json({ 
-        error: "يرجى إضافة مفاتيح Payzaty في إعدادات Secrets.",
-        details: "PAYZATY_ACCOUNT_NO or PAYZATY_SECRET_KEY is missing" 
-      });
-    }
+    const accountNo = process.env.PAYZATY_ACCOUNT_NO || "134221";
+    const secretKey = process.env.PAYZATY_SECRET_KEY || "sk_111d55e9e3f0434fa0ed1495e5f3ea12";
 
     const response = await fetch(`${PAYZATY_API_URL}/checkout`, {
       method: "POST",
