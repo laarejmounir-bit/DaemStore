@@ -1,5 +1,6 @@
 {
   "name": "داعم ستور",
   "description": "منصة داعم ستور المتميزة لنمو وزيادة تفاعل المتابعين والإعجابات على شبكات التواصل الرقمي.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

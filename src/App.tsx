@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { 
   Music2, 
   Zap, 
@@ -418,10 +418,13 @@ const findOptionByName = (name: string) => {
   return null;
 };
 
-const formatFollowers = (count: number) => {
-  if (count >= 1000000) return (count / 1000000).toFixed(1) + 'M';
-  if (count >= 1000) return (count / 1000).toFixed(1) + 'k';
-  return count.toString();
+const formatFollowers = (count: any) => {
+  if (count === undefined || count === null || count === '') return '0';
+  const num = typeof count === 'number' ? count : parseInt(String(count), 10);
+  if (isNaN(num)) return '0';
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
+  return num.toString();
 };
 
 function Home() {
@@ -599,7 +602,16 @@ function Home() {
   const customTotalPrice = customViews.price + customLikes.price + customSaves.price + customShares.price;
 
   useEffect(() => {
-    if (!targetLink || (selectedOption?.label !== 'متابعين' && selectedOption?.label !== 'مشتركين' && selectedOption?.label !== 'العروض القوية')) {
+    const isTikTokService = !activeService || activeService.id === 'tiktok';
+    const isUserField = selectedOption?.label?.includes('متابعين') || 
+                        selectedOption?.name?.includes('متابعين') || 
+                        selectedOption?.label?.includes('مشتركين') || 
+                        selectedOption?.name?.includes('مشتركين') || 
+                        selectedOption?.label?.includes('العروض') || 
+                        selectedOption?.name?.includes('العروض') ||
+                        (!targetLink.includes('/video/') && !targetLink.includes('/v/') && isTikTokService);
+
+    if (!targetLink || targetLink.trim().length < 2 || targetLink.includes('/video/') || targetLink.includes('/v/') || !isUserField) {
       setTiktokProfile(null);
       setTiktokError(null);
       return;
@@ -621,23 +633,60 @@ function Home() {
       setTiktokProfile(null);
 
       try {
-        const response = await fetch(`/api/tiktok/user?uniqueId=${username}`);
-        const data = await response.json();
+        const response = await fetch(`/api/tiktok/user?uniqueId=${encodeURIComponent(username)}`);
+        const contentType = response.headers.get('content-type') || '';
+        
+        let data: any = null;
+        if (contentType.includes('application/json')) {
+          data = await response.json();
+        }
 
-        if (data.statusCode === 0) {
+        if (data && data.statusCode === 0 && data.userInfo && data.userInfo.user) {
           setTiktokProfile(data.userInfo);
-        } else if (response.status === 429) {
-          setTiktokError("نظام التحقق تحت الصيانة مؤقتاً، يمكنك إكمال الطلب يدوياً");
+          setTiktokError(null);
         } else {
-          setTiktokError("لم يتم العثور على الحساب، تأكد من اليوزر");
+          setTiktokProfile(null);
+          if (data && (data.statusCode === 429 || response.status === 429)) {
+            setTiktokError("تم تجاوز حد الطلبات السريعة، يرجى الانتظار بضعة ثواني والإعادة");
+          } else if (data && (data.error || data.message)) {
+            setTiktokError(data.error || data.message);
+          } else {
+            setTiktokError("لم يتم العثور على الحساب، تأكد من اسم المستخدم");
+          }
         }
       } catch (err) {
+        // Direct browser fallback on network error
+        try {
+          const oembedRes = await fetch(`https://www.tiktok.com/oembed?url=https://www.tiktok.com/@${encodeURIComponent(username)}`);
+          if (oembedRes.ok) {
+            const odata = await oembedRes.json();
+            if (odata && odata.author_name) {
+              setTiktokProfile({
+                user: {
+                  uniqueId: username,
+                  nickname: odata.author_name,
+                  avatarThumb: `https://ui-avatars.com/api/?name=${encodeURIComponent(odata.author_name)}&background=10b981&color=fff`,
+                  avatarLarger: `https://ui-avatars.com/api/?name=${encodeURIComponent(odata.author_name)}&background=10b981&color=fff`,
+                  verified: false
+                },
+                stats: {
+                  followerCount: null,
+                  heartCount: null
+                }
+              });
+              setTiktokError(null);
+              return;
+            }
+          }
+        } catch (e) {}
+
         console.error("TikTok lookup error:", err);
-        setTiktokError("حدث خطأ أثناء التحقق من الحساب");
+        setTiktokProfile(null);
+        setTiktokError("حدث خطأ أثناء التحقق من الحساب، يُرجى المحاولة مرة أخرى");
       } finally {
         setIsTiktokLoading(false);
       }
-    }, 800);
+    }, 600);
 
     return () => clearTimeout(timer);
   }, [targetLink, selectedOption]);
@@ -1037,16 +1086,16 @@ function Home() {
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="text-xs text-slate-500 uppercase tracking-[0.2em] font-bold mb-1">الباقة المختارة</div>
-                          <div className="text-xl font-bold text-white">{selectedPlan.name || `${selectedPlan.quantity} ${selectedOption.name}`}</div>
+                          <div className="text-xl font-bold text-white">{selectedPlan?.name || `${selectedPlan?.quantity || ''} ${selectedOption?.name || selectedOption?.label || ''}`}</div>
                         </div>
                         <div className="text-left">
                           <div className="text-xs text-slate-500 uppercase tracking-[0.2em] font-bold mb-1">السعر</div>
-                          <div className="text-2xl font-bold text-emerald-500">{selectedPlan.price} ر.س</div>
+                          <div className="text-2xl font-bold text-emerald-500">{selectedPlan?.price || '0'} ر.س</div>
                           <div className="text-[10px] text-slate-500 font-bold">شامل الضريبة</div>
                         </div>
                       </div>
 
-                      {selectedPlan.details && selectedPlan.details.length > 0 && (
+                      {selectedPlan?.details && selectedPlan.details.length > 0 && (
                         <div className="pt-4 border-t border-emerald-500/10">
                           <div className="text-xs text-slate-500 uppercase tracking-[0.2em] font-bold mb-3">تفاصيل الطلب</div>
                           <div className="flex flex-wrap gap-2">
@@ -1062,9 +1111,9 @@ function Home() {
 
                     <div className="space-y-2">
                       <label className="text-sm font-bold text-slate-300 mr-1">
-                        {selectedOption.label === 'متابعين' || selectedOption.label === 'مشتركين' || selectedOption.label === 'العروض القوية'
+                        {selectedOption?.label === 'متابعين' || selectedOption?.name === 'متابعين' || selectedOption?.label === 'مشتركين' || selectedOption?.name === 'مشتركين' || selectedOption?.label === 'العروض القوية' || selectedOption?.name === 'العروض القوية'
                           ? 'اسم المستخدم أو رابط الحساب' 
-                          : selectedOption.label === 'بكجات الاكسبلور'
+                          : selectedOption?.label === 'بكجات الاكسبلور' || selectedOption?.name === 'بكجات الاكسبلور'
                           ? 'رابط المقطع (الفيديو)'
                           : 'رابط الفيديو أو المنشور'}
                       </label>
@@ -1073,7 +1122,7 @@ function Home() {
                           type="text" 
                           value={targetLink}
                           onChange={(e) => setTargetLink(e.target.value)}
-                          placeholder={selectedOption.label === 'متابعين' || selectedOption.label === 'مشتركين' || selectedOption.label === 'العروض القوية'
+                          placeholder={selectedOption?.label === 'متابعين' || selectedOption?.name === 'متابعين' || selectedOption?.label === 'مشتركين' || selectedOption?.name === 'مشتركين' || selectedOption?.label === 'العروض القوية' || selectedOption?.name === 'العروض القوية'
                             ? '@اسم_المستخدم أو رابط الحساب' 
                             : 'https://vt.tiktok.com/ZSu7ekwF7'}
                           className="w-full bg-slate-950/50 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-emerald-500/50 transition-all"
@@ -1093,7 +1142,7 @@ function Home() {
                           </div>
                         )}
 
-                        {tiktokProfile && (
+                        {tiktokProfile && tiktokProfile.user && (
                           <motion.div 
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -1104,15 +1153,26 @@ function Home() {
                             
                             <div className="relative shrink-0">
                               <img 
-                                src={`/api/proxy-image?url=${encodeURIComponent(tiktokProfile.user.avatarThumb || tiktokProfile.user.avatarLarger || '')}`} 
-                                alt={tiktokProfile.user.nickname}
+                                src={(tiktokProfile.user?.avatarThumb || tiktokProfile.user?.avatarLarger || tiktokProfile.user?.avatarMedium) 
+                                  ? `/api/proxy-image?url=${encodeURIComponent(tiktokProfile.user?.avatarThumb || tiktokProfile.user?.avatarLarger || tiktokProfile.user?.avatarMedium || '')}` 
+                                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(tiktokProfile.user?.nickname || tiktokProfile.user?.uniqueId || 'TikTok')}&background=10b981&color=fff`} 
+                                alt={tiktokProfile.user?.nickname || 'Avatar'}
                                 className="w-14 h-14 rounded-full border-2 border-emerald-500/50 object-cover"
                                 referrerPolicy="no-referrer"
                                 onError={(e) => {
-                                  (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/avatar/200/200';
+                                  const target = e.currentTarget;
+                                  if (!target.dataset.failedOnce) {
+                                    target.dataset.failedOnce = "true";
+                                    const directUrl = tiktokProfile.user?.avatarLarger || tiktokProfile.user?.avatarThumb;
+                                    if (directUrl && directUrl.startsWith('http')) {
+                                      target.src = directUrl;
+                                      return;
+                                    }
+                                  }
+                                  target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(tiktokProfile.user?.nickname || tiktokProfile.user?.uniqueId || 'TikTok')}&background=10b981&color=fff`;
                                 }}
                               />
-                              {tiktokProfile.user.verified && (
+                              {tiktokProfile.user?.verified && (
                                 <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-white p-0.5 rounded-full border-2 border-slate-900">
                                   <Check className="w-2.5 h-2.5" />
                                 </div>
@@ -1121,20 +1181,35 @@ function Home() {
                             
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-0.5">
-                                <h4 className="text-white font-bold truncate">{tiktokProfile.user.nickname}</h4>
-                                <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-emerald-500/20 flex items-center gap-1">
-                                  <CheckCircle2 className="w-2.5 h-2.5" /> حساب موثق
-                                </span>
+                                <h4 className="text-white font-bold truncate">{tiktokProfile.user?.nickname || tiktokProfile.user?.uniqueId || 'حساب تيك توك'}</h4>
+                                {tiktokProfile.user?.verified ? (
+                                  <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-emerald-500/20 flex items-center gap-1">
+                                    <CheckCircle2 className="w-2.5 h-2.5" /> حساب موثق
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 text-xs dir-ltr">
+                                    @{tiktokProfile.user?.uniqueId}
+                                  </span>
+                                )}
                               </div>
                               <div className="flex items-center gap-3 text-slate-400 text-xs">
-                                <div className="flex items-center gap-1">
-                                  <Users className="w-3 h-3 text-emerald-500" />
-                                  <span className="font-bold">{formatFollowers(tiktokProfile.stats.followerCount)}</span> متابع
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <Heart className="w-3 h-3 text-purple-500" />
-                                  <span className="font-bold">{formatFollowers(tiktokProfile.stats.heartCount || tiktokProfile.stats.followingCount)}</span> {tiktokProfile.stats.heartCount !== undefined ? 'إعجاب' : 'يتابع'}
-                                </div>
+                                {tiktokProfile.stats && tiktokProfile.stats.followerCount !== null && tiktokProfile.stats.followerCount !== undefined ? (
+                                  <>
+                                    <div className="flex items-center gap-1">
+                                      <Users className="w-3 h-3 text-emerald-500" />
+                                      <span className="font-bold">{formatFollowers(tiktokProfile.stats?.followerCount)}</span> متابع
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <Heart className="w-3 h-3 text-purple-500" />
+                                      <span className="font-bold">{formatFollowers(tiktokProfile.stats?.heartCount ?? tiktokProfile.stats?.heart ?? tiktokProfile.stats?.followingCount)}</span> {tiktokProfile.stats?.heartCount !== undefined ? 'إعجاب' : 'يتابع'}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="flex items-center gap-1 text-emerald-400 font-medium">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                    <span>تم التثبت من صحة الحساب</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </motion.div>
@@ -1854,79 +1929,6 @@ function Home() {
           </div>
         </div>
       </section>
-
-      {/* Footer */}
-      <footer className="bg-slate-950 border-t border-white/5 py-16">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col items-center text-center">
-            <Link to="/" className="flex items-center justify-center gap-2 mb-8 group cursor-pointer">
-              <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:scale-110 transition-transform">
-                <Zap className="text-slate-950 w-6 h-6 fill-slate-950" />
-              </div>
-              <span className="text-2xl font-bold text-white">داعم <span className="text-emerald-500">ستور</span></span>
-            </Link>
-
-            {/* Payment Methods */}
-            <div className="mb-12 w-full">
-              <div className="text-slate-500 text-[10px] md:text-xs font-bold mb-6 uppercase tracking-[0.2em]">طرق دفع آمنة</div>
-              <div className="flex flex-wrap justify-center items-center gap-2 md:gap-3">
-                <div className="bg-white/[0.03] border border-white/5 px-3 md:px-6 py-1.5 md:py-2.5 rounded-lg md:rounded-xl hover:bg-white/[0.06] transition-colors cursor-default group">
-                  <span className="text-white/60 group-hover:text-white transition-colors text-xs md:text-sm font-bold">ابل باي</span>
-                </div>
-
-                <div className="bg-white/[0.03] border border-white/5 px-3 md:px-6 py-1.5 md:py-2.5 rounded-lg md:rounded-xl hover:bg-white/[0.06] transition-colors cursor-default group">
-                  <span className="text-white/60 group-hover:text-white transition-colors text-xs md:text-sm font-bold">فيزا</span>
-                </div>
-
-                <div className="bg-white/[0.03] border border-white/5 px-3 md:px-6 py-1.5 md:py-2.5 rounded-lg md:rounded-xl hover:bg-white/[0.06] transition-colors cursor-default group">
-                  <span className="text-white/60 group-hover:text-white transition-colors text-xs md:text-sm font-bold">ماستر كارد</span>
-                </div>
-
-                <div className="bg-white/[0.03] border border-white/5 px-3 md:px-6 py-1.5 md:py-2.5 rounded-lg md:rounded-xl hover:bg-white/[0.06] transition-colors cursor-default group">
-                  <span className="text-white/60 group-hover:text-white transition-colors text-xs md:text-sm font-bold">مدى</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Business Legal Info */}
-            <div className="mb-6 flex flex-col items-center gap-3">
-              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[10px] md:text-xs text-slate-500">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-bold">رقم الضريبة:</span>
-                  <span className="text-slate-300 font-mono">312923423500003</span>
-                </div>
-                <div className="w-px h-3 bg-white/10" />
-                <div className="flex items-center gap-1.5">
-                  <span className="font-bold">وثيقة العمل الحر:</span>
-                  <span className="text-slate-300 font-mono">FL-187862527</span>
-                </div>
-              </div>
-              
-              <div className="flex items-center justify-center gap-4 text-[10px] md:text-xs">
-                <Link to="/terms" className="text-emerald-500 hover:text-emerald-400 transition-colors font-bold">
-                  شروط الخدمة
-                </Link>
-                <div className="w-px h-3 bg-white/10" />
-                <Link to="/privacy-policy" className="text-emerald-500 hover:text-emerald-400 transition-colors font-bold">
-                  سياسة الخصوصية
-                </Link>
-                <div className="w-px h-3 bg-white/10" />
-                <Link to="/refill" className="text-emerald-500 hover:text-emerald-400 transition-colors font-bold">
-                  طلب تعويض نقص
-                </Link>
-              </div>
-            </div>
-
-            <p className="text-slate-500 text-[10px] sm:text-xs md:text-sm mb-3 max-w-[280px] sm:max-w-none mx-auto leading-relaxed">
-              هذا الموقع تابع لمتجر داعم ستور، العلامة الرائدة والأشهر في خدمات منصات التواصل الاجتماعي بالمملكة العربية السعودية.
-            </p>
-
-            <p className="text-slate-400 text-[10px] md:text-xs">
-              © 2026 داعم ستور. جميع الحقوق محفوظة.
-            </p>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
@@ -2580,22 +2582,6 @@ export function TermsOfService() {
           </motion.div>
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="bg-slate-950 border-t border-white/5 py-12">
-        <div className="max-w-7xl mx-auto px-6 text-center">
-          <div className="flex flex-wrap justify-center items-center gap-4 mb-4 text-xs">
-            <Link to="/terms" className="text-slate-500 hover:text-emerald-500 transition-colors">شروط الخدمة</Link>
-            <div className="w-px h-3 bg-white/10" />
-            <Link to="/privacy-policy" className="text-slate-500 hover:text-emerald-500 transition-colors">سياسة الخصوصية</Link>
-            <div className="w-px h-3 bg-white/10" />
-            <Link to="/refill" className="text-slate-500 hover:text-emerald-500 transition-colors">طلب تعويض نقص</Link>
-          </div>
-          <p className="text-slate-400 text-sm">
-            © 2026 داعم ستور. جميع الحقوق محفوظة.
-          </p>
-        </div>
-      </footer>
     </div>
   );
 }
@@ -2726,22 +2712,6 @@ export function PrivacyPolicy() {
           </motion.div>
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="bg-slate-950 border-t border-white/5 py-12">
-        <div className="max-w-7xl mx-auto px-6 text-center">
-          <div className="flex flex-wrap justify-center items-center gap-4 mb-4 text-xs">
-            <Link to="/terms" className="text-slate-500 hover:text-emerald-500 transition-colors">شروط الخدمة</Link>
-            <div className="w-px h-3 bg-white/10" />
-            <Link to="/privacy-policy" className="text-slate-500 hover:text-emerald-500 transition-colors">سياسة الخصوصية</Link>
-            <div className="w-px h-3 bg-white/10" />
-            <Link to="/refill" className="text-slate-500 hover:text-emerald-500 transition-colors">طلب تعويض نقص</Link>
-          </div>
-          <p className="text-slate-400 text-sm">
-            © 2026 داعم ستور. جميع الحقوق محفوظة.
-          </p>
-        </div>
-      </footer>
     </div>
   );
 }
@@ -2953,54 +2923,53 @@ export function RefillRequest() {
           </motion.div>
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="bg-slate-950 border-t border-white/5 py-12">
-        <div className="max-w-7xl mx-auto px-6 text-center">
-          <div className="flex flex-wrap justify-center items-center gap-4 mb-6 text-xs text-slate-500">
-            <div className="flex items-center gap-1.5">
-              <span className="font-bold">رقم الضريبة:</span>
-              <span className="text-slate-300 font-mono">312923423500003</span>
-            </div>
-            <div className="w-px h-3 bg-white/10" />
-            <div className="flex items-center gap-1.5">
-              <span className="font-bold">وثيقة العمل الحر:</span>
-              <span className="text-slate-300 font-mono">FL-187862527</span>
-            </div>
-          </div>
-          
-          <div className="flex flex-wrap justify-center items-center gap-4 mb-6 text-xs">
-            <Link to="/terms" className="text-slate-500 hover:text-emerald-500 transition-colors">شروط الخدمة</Link>
-            <div className="w-px h-3 bg-white/10" />
-            <Link to="/privacy-policy" className="text-slate-500 hover:text-emerald-500 transition-colors">سياسة الخصوصية</Link>
-            <div className="w-px h-3 bg-white/10" />
-            <Link to="/refill" className="text-slate-500 hover:text-emerald-500 transition-colors">طلب تعويض نقص</Link>
-          </div>
-          
-          <p className="text-slate-400 text-sm">
-            © 2026 داعم ستور. جميع الحقوق محفوظة.
-          </p>
-        </div>
-      </footer>
     </div>
   );
 }
 
 import { TikTokTracker } from './components/TikTokTracker';
 import { trackTikTokEvent } from './utils/tiktokCapi';
+import AboutUs from './components/pages/AboutUs';
+import ContactUs from './components/pages/ContactUs';
+import ShippingPolicy from './components/pages/ShippingPolicy';
+import ReturnPolicy from './components/pages/ReturnPolicy';
+import CookiePolicy from './components/pages/CookiePolicy';
+import StructuredData from './components/StructuredData';
+import Footer from './components/Footer';
+
+function PublicLayout() {
+  return (
+    <div className="min-h-screen bg-slate-950 flex flex-col justify-between">
+      <div className="flex-grow">
+        <Outlet />
+      </div>
+      <Footer />
+    </div>
+  );
+}
 
 export default function App() {
   return (
     <BrowserRouter>
       <TikTokTracker />
+      <StructuredData />
       <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/checkout" element={<Home />} />
-        <Route path="/success" element={<ThankYou />} />
-        <Route path="/terms" element={<TermsOfService />} />
-        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-        <Route path="/refill" element={<RefillRequest />} />
-        <Route path="/thankyou" element={<ThankYou />} />
+        <Route element={<PublicLayout />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/checkout" element={<Home />} />
+          <Route path="/about" element={<AboutUs />} />
+          <Route path="/contact" element={<ContactUs />} />
+          <Route path="/shipping" element={<ShippingPolicy />} />
+          <Route path="/returns" element={<ReturnPolicy />} />
+          <Route path="/refund-policy" element={<ReturnPolicy />} />
+          <Route path="/cookie-policy" element={<CookiePolicy />} />
+          <Route path="/terms" element={<TermsOfService />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/refill" element={<RefillRequest />} />
+          <Route path="/success" element={<ThankYou />} />
+          <Route path="/thankyou" element={<ThankYou />} />
+        </Route>
         <Route 
           path="/bomba" 
           element={

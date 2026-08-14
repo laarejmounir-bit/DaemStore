@@ -7,6 +7,8 @@ import { rateLimit } from "express-rate-limit";
 import validator from "validator";
 import crypto from "crypto";
 
+import { getTikTokUserInfo, cleanTikTokUrl } from "./api/_utils.js";
+
 dotenv.config();
 
 console.log('Token Loaded:', !!process.env.TIKTOK_ACCESS_TOKEN);
@@ -15,28 +17,30 @@ const app = express();
 app.set('trust proxy', true);
 const PORT = 3000;
 
-// CORS Configuration - Strict for production
+// CORS Configuration - Strict for production & Vercel
 const allowedOrigins = [
-  "https://saudismm.com",
-  "https://www.saudismm.com",
-  // Whitelisting preview URLs to ensure the app remains functional in the AI Studio environment
+  "https://daemstore.com",
+  "https://www.daemstore.com",
   "https://ais-dev-yd45tmitnmz4i3uznm2lex-594526045281.europe-west2.run.app",
   "https://ais-pre-yd45tmitnmz4i3uznm2lex-594526045281.europe-west2.run.app"
 ];
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or direct server-to-server calls)
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.includes(origin)) {
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.includes('vercel.app') ||
+      origin.includes('daemstore.com')
+    ) {
       callback(null, true);
     } else {
       console.warn(`CORS blocked request from origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
-  methods: ["GET", "POST", "PUT", "DELETE"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "x-rapidapi-key", "x-rapidapi-host"],
   credentials: true
 }));
@@ -51,9 +55,9 @@ app.use((req, res, next) => {
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://apis.google.com https://www.google.com https://static.cloudflareinsights.com https://www.googletagmanager.com https://www.google-analytics.com https://analytics.tiktok.com https://*.tiktokw.us; " +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
     "font-src 'self' https://fonts.gstatic.com; " +
-    "img-src 'self' data: https://picsum.photos https://*.google.com https://*.gstatic.com https://*.payzaty.com https://saudismm.com https://www.saudismm.com https://www.googletagmanager.com https://www.google-analytics.com https://analytics.tiktok.com; " +
+    "img-src 'self' data: https://picsum.photos https://*.google.com https://*.gstatic.com https://*.payzaty.com https://www.googletagmanager.com https://www.google-analytics.com https://analytics.tiktok.com https://*.tiktokcdn.com https://*.tiktokcdn-eu.com https://*.tiktokcdn-us.com https://*.tiktok.com https://ui-avatars.com; " +
     "connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://*.firebaseapp.com https://api.payzaty.com https://*.rapidapi.com https://www.googletagmanager.com https://*.google-analytics.com https://analytics.tiktok.com https://*.payzaty.com https://*.tiktokw.us; " +
-    "frame-src 'self' https://saudismm-b1bf5.firebaseapp.com/ https://*.payzaty.com https://*.google.com https://www.googletagmanager.com;"
+    "frame-src 'self' https://*.payzaty.com https://*.google.com https://www.googletagmanager.com;"
   );
   next();
 });
@@ -127,6 +131,14 @@ app.get("/api/payment-cancel", (req, res) => {
 app.post("/api/checkout", checkoutLimiter, async (req, res) => {
   try {
     let { amount, currency, reference, customer, response_url, cancel_url } = req.body;
+
+    const defaultDomain = "https://www.daemstore.com";
+    if (!response_url || response_url.includes("localhost") || response_url.includes("127.0.0.1")) {
+      response_url = `${defaultDomain}/thankyou?payment_return=true`;
+    }
+    if (!cancel_url || cancel_url.includes("localhost") || cancel_url.includes("127.0.0.1")) {
+      cancel_url = `${defaultDomain}/thankyou?payment_cancel=true`;
+    }
 
     // Input Sanitization
     if (customer) {
@@ -250,34 +262,17 @@ app.get("/api/tiktok/user", checkoutLimiter, async (req, res) => {
   try {
     const { uniqueId } = req.query;
     if (!uniqueId || typeof uniqueId !== 'string') {
-      return res.status(400).json({ error: "uniqueId is required" });
+      return res.status(400).json({ statusCode: 400, error: "uniqueId is required" });
     }
 
-    // Sanitize TikTok uniqueId
-    const sanitizedUniqueId = validator.escape(validator.trim(uniqueId));
-
-    const apiKey = process.env.RAPIDAPI_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "RapidAPI key is missing" });
+    const data = await getTikTokUserInfo(uniqueId);
+    if (data.statusCode === 429) {
+      return res.status(429).json(data);
     }
-
-    const response = await fetch(`https://tiktok-api23.p.rapidapi.com/api/user/info?uniqueId=${sanitizedUniqueId}`, {
-      method: "GET",
-      headers: {
-        "x-rapidapi-key": apiKey,
-        "x-rapidapi-host": "tiktok-api23.p.rapidapi.com",
-      },
-    });
-
-    if (response.status === 429) {
-      return res.status(429).json({ error: "Quota exceeded" });
-    }
-
-    const data = await response.json();
     res.json(data);
   } catch (error) {
     console.error("TikTok API error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(500).json({ statusCode: 500, error: "Internal Server Error" });
   }
 });
 
@@ -288,30 +283,51 @@ app.get("/api/proxy-image", async (req, res) => {
       return res.status(400).send("URL is required");
     }
 
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Referer': 'https://www.tiktok.com/'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch image: ${response.statusText}`);
+    const cleanedUrl = cleanTikTokUrl(url);
+    if (!cleanedUrl || !cleanedUrl.startsWith('http')) {
+      return res.status(400).send("Invalid image URL");
     }
 
-    const contentType = response.headers.get('content-type');
-    if (contentType) {
-      res.setHeader('Content-Type', contentType);
-    }
-    
-    // Cache for 24 hours
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    const uas = [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+    ];
 
-    const buffer = await response.arrayBuffer();
-    res.send(Buffer.from(buffer));
+    let imageRes: Response | null = null;
+    for (const ua of uas) {
+      try {
+        const response = await fetch(cleanedUrl, {
+          headers: {
+            'User-Agent': ua,
+            'Referer': 'https://www.tiktok.com/',
+            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+          }
+        });
+        if (response.ok) {
+          imageRes = response;
+          break;
+        }
+      } catch (e) {}
+    }
+
+    if (!imageRes || !imageRes.ok) {
+      const fallbackName = encodeURIComponent("TikTok");
+      const fallbackRes = await fetch(`https://ui-avatars.com/api/?name=${fallbackName}&background=10b981&color=fff`);
+      res.setHeader('Content-Type', 'image/png');
+      const buf = await fallbackRes.arrayBuffer();
+      return res.status(200).send(Buffer.from(buf));
+    }
+
+    const contentType = imageRes.headers.get('content-type') || 'image/jpeg';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400');
+
+    const buffer = await imageRes.arrayBuffer();
+    return res.status(200).send(Buffer.from(buffer));
   } catch (error) {
     console.error("Proxy image error:", error);
-    res.status(500).send("Error proxying image");
+    return res.status(500).send("Error proxying image");
   }
 });
 
@@ -369,7 +385,7 @@ app.post("/api/tiktok/track", async (req, res) => {
           ...hashedUser
         },
         "page": { 
-          "url": "https://saudismm.com" + (req.originalUrl || "")
+          "url": "https://daemstore.com" + (req.originalUrl || "")
         },
         ...(properties ? { properties } : {})
       }]
@@ -405,12 +421,23 @@ app.all("/api/*", (req, res) => {
 
 app.get('/sitemap.xml', (req, res) => {
   res.header('Content-Type', 'application/xml');
-  res.send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://saudismm.com/</loc><priority>1.0</priority></url><url><loc>https://saudismm.com/terms</loc><priority>0.8</priority></url><url><loc>https://saudismm.com/privacy</loc><priority>0.8</priority></url><url><loc>https://saudismm.com/refill</loc><priority>0.8</priority></url></urlset>');
+  res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://www.daemstore.com/</loc><priority>1.0</priority></url>
+  <url><loc>https://www.daemstore.com/about</loc><priority>0.8</priority></url>
+  <url><loc>https://www.daemstore.com/contact</loc><priority>0.8</priority></url>
+  <url><loc>https://www.daemstore.com/shipping</loc><priority>0.8</priority></url>
+  <url><loc>https://www.daemstore.com/returns</loc><priority>0.8</priority></url>
+  <url><loc>https://www.daemstore.com/terms</loc><priority>0.8</priority></url>
+  <url><loc>https://www.daemstore.com/privacy-policy</loc><priority>0.8</priority></url>
+  <url><loc>https://www.daemstore.com/cookie-policy</loc><priority>0.8</priority></url>
+  <url><loc>https://www.daemstore.com/refill</loc><priority>0.8</priority></url>
+</urlset>`);
 });
 
 app.get('/robots.txt', (req, res) => {
   res.header('Content-Type', 'text/plain');
-  res.send('User-agent: *\nAllow: /\n\nSitemap: https://saudismm.com/sitemap.xml');
+  res.send('User-agent: *\nAllow: /\nDisallow: /bomba\nDisallow: /api/\n\nSitemap: https://www.daemstore.com/sitemap.xml');
 });
 
 async function startServer() {
@@ -451,7 +478,7 @@ async function startServer() {
                 "client_user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                 "external_id": crypto.createHash('sha256').update("test_user_" + Date.now()).digest('hex')
               },
-              "page": { "url": "https://saudismm.com/startup-test" }
+              "page": { "url": "https://daemstore.com/startup-test" }
             }
           ]
         };
