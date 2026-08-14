@@ -1,6 +1,4 @@
 User-agent: *
 Allow: /
-Disallow: /bomba
-Disallow: /api/
 
-Sitemap: https://www.daemstore.com/sitemap.xml
+Sitemap: https://saudismm.com/sitemap.xml

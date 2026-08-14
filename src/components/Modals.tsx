@@ -20,86 +20,6 @@ export const Modals = () => {
     customTotalPrice
   } = useAppContext();
 
-  const [customerName, setCustomerName] = React.useState('');
-  const [customerPhone, setCustomerPhone] = React.useState('');
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [checkoutError, setCheckoutError] = React.useState<string | null>(null);
-
-  const handleCartCheckout = async () => {
-    if (cart.length === 0) return;
-    setIsSubmitting(true);
-    setCheckoutError(null);
-
-    try {
-      const totalAmount = cart.reduce((sum, item) => sum + item.price, 0);
-      const orderId = `SMM-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
-      const rawDigits = (customerPhone || '').replace(/\D/g, '');
-      const cleanPhoneDigits = rawDigits.replace(/^0+/, '');
-      const formattedPhone = cleanPhoneDigits ? `+966${cleanPhoneDigits}` : '+966500000000';
-
-      const response = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: totalAmount,
-          currency: 'SAR',
-          reference: orderId,
-          customer: {
-            name: customerName || 'عميل متجر دعم',
-            email: 'guest@daemstore.com',
-            phone: formattedPhone
-          },
-          response_url: `${window.location.origin}/thankyou?payment_return=true`,
-          cancel_url: `${window.location.origin}/thankyou?payment_cancel=true`,
-          metadata: {
-            items: cart.map(item => ({
-              plan: item.planName,
-              price: item.price,
-              link: item.targetLink
-            }))
-          }
-        })
-      });
-
-      const text = await response.text();
-      let data: any = {};
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch (e) {
-        data = { error: 'استجابة غير صالحة من خادم الدفع' };
-      }
-
-      if (response.ok && (data.checkout_url || data.checkout_id)) {
-        const checkoutUrl = data.checkout_url || `https://pay.payzaty.com/payment/pay/${data.checkout_id}`;
-        localStorage.setItem('last_checkout_id', data.checkout_id || '');
-        localStorage.setItem('last_order_reference', orderId);
-        localStorage.setItem('last_checkout_plan', JSON.stringify(cart.map(item => ({
-          plan: { name: item.planName, price: item.price, quantity: item.quantity },
-          optionName: item.optionName,
-          targetLink: item.targetLink
-        }))));
-        localStorage.setItem('last_customer_name', customerName);
-        localStorage.setItem('last_customer_phone', customerPhone);
-
-        if (window.top && window.top !== window) {
-          try {
-            window.top.location.href = checkoutUrl;
-          } catch (e) {
-            window.location.href = checkoutUrl;
-          }
-        } else {
-          window.location.href = checkoutUrl;
-        }
-      } else {
-        setCheckoutError(data.error_text || data.error || data.details || 'حدث خطأ أثناء إنشاء عملية الدفع.');
-      }
-    } catch (e: any) {
-      setCheckoutError('تعذر الاتصال ببوابة الدفع. يرجى المحاولة مرة أخرى.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const addToCart = () => {
     if (!selectedOption || !selectedPlan || !targetLink) return;
 
@@ -460,7 +380,7 @@ export const Modals = () => {
               )}
 
               {modalStep === 'checkout' && (
-                <div className="space-y-6 py-4">
+                <div className="space-y-8 py-4">
                   <div className="p-6 bg-emerald-500/10 border border-emerald-500/20 rounded-3xl flex items-center justify-between">
                     <div>
                       <div className="text-slate-400 text-sm mb-1">المبلغ المطلوب دفعه</div>
@@ -472,69 +392,42 @@ export const Modals = () => {
                   </div>
 
                   <div className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-slate-300 mr-1">الاسم الكامل</label>
-                      <input 
-                        type="text" 
-                        value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                        placeholder="أدخل اسمك الكامل"
-                        className="w-full bg-slate-950/50 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-emerald-500/50 transition-all text-right"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-slate-300 mr-1">رقم الجوال</label>
-                      <div className="relative flex items-center">
-                        <div className="absolute left-6 text-slate-400 font-bold ltr" dir="ltr">+966</div>
-                        <input 
-                          type="tel" 
-                          value={customerPhone}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/\D/g, '');
-                            if (val.startsWith('0')) {
-                              if (val.length <= 10) setCustomerPhone(val);
-                            } else {
-                              if (val.length <= 9) setCustomerPhone(val);
-                            }
-                          }}
-                          placeholder="5XXXXXXXX أو 05XXXXXXXX"
-                          className="w-full bg-slate-950/50 border border-white/10 rounded-2xl pl-20 pr-6 py-4 text-white focus:outline-none focus:border-emerald-500/50 transition-all ltr"
-                          dir="ltr"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <h4 className="text-sm font-bold text-slate-300 mb-2">وسيلة الدفع</h4>
+                    <h4 className="text-lg font-bold text-white mb-4">اختر وسيلة الدفع</h4>
                     <div className="grid grid-cols-1 gap-4">
-                      <div 
-                        className="flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl"
+                      <button 
+                        className="flex items-center justify-between p-6 bg-white/5 border border-emerald-500/30 rounded-2xl hover:bg-white/10 transition-all group"
                       >
                         <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-400">
-                            <CreditCard className="w-5 h-5" />
+                          <div className="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-400">
+                            <CreditCard className="w-6 h-6" />
                           </div>
                           <div className="text-right">
-                            <div className="text-white font-bold text-sm">مدى / فيزا / ماستركارد</div>
-                            <div className="text-slate-400 text-xs">دفع آمن عبر بوابة Payzaty</div>
+                            <div className="text-white font-bold">مدى / فيزا / ماستركارد</div>
+                            <div className="text-slate-500 text-xs">دفع آمن عبر بوابة Payzaty</div>
                           </div>
                         </div>
-                        <div className="w-5 h-5 rounded-full border-2 border-emerald-500 flex items-center justify-center">
-                          <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full" />
+                        <div className="w-6 h-6 rounded-full border-2 border-emerald-500 flex items-center justify-center">
+                          <div className="w-3 h-3 bg-emerald-500 rounded-full" />
                         </div>
-                      </div>
+                      </button>
+
+                      <button 
+                        className="flex items-center justify-between p-6 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 transition-all group opacity-60 grayscale cursor-not-allowed"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center text-slate-400">
+                            <span className="font-bold text-xs">Apple</span>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-white font-bold">Apple Pay</div>
+                            <div className="text-slate-500 text-xs">قريباً...</div>
+                          </div>
+                        </div>
+                      </button>
                     </div>
                   </div>
 
-                  {checkoutError && (
-                    <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-sm text-center">
-                      {checkoutError}
-                    </div>
-                  )}
-
-                  <div className="flex gap-4 pt-2">
+                  <div className="flex gap-4 pt-4">
                     <button
                       onClick={() => setModalStep('cart-view')}
                       className="flex-1 bg-white/5 text-white py-4 rounded-2xl font-bold hover:bg-white/10 transition-all"
@@ -542,15 +435,9 @@ export const Modals = () => {
                       رجوع للسلة
                     </button>
                     <button
-                      disabled={!customerName || customerPhone.length < 8 || isSubmitting}
-                      onClick={handleCartCheckout}
-                      className={`flex-[2] py-4 rounded-2xl font-bold text-lg transition-all active:scale-95 ${
-                        customerName && customerPhone.length >= 8 && !isSubmitting
-                          ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-lg shadow-emerald-500/20'
-                          : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                      }`}
+                      className="flex-[2] bg-emerald-500 text-slate-950 py-4 rounded-2xl font-bold text-lg hover:bg-emerald-400 transition-all active:scale-95"
                     >
-                      {isSubmitting ? 'جاري التحويل...' : `تأكيد ودفع ${totalCartPrice} ريال`}
+                      تأكيد ودفع {totalCartPrice} ريال
                     </button>
                   </div>
                   

@@ -6,7 +6,6 @@ import { FEATURES, FAQS } from '../../constants';
 import { FAQItem } from '../FAQItem';
 import { SEOSection } from '../SEOSection';
 import { Modals } from '../Modals';
-import { Footer } from '../Footer';
 import { useAppServices, ICON_MAP } from '../../contexts/ServicesContext';
 
 const Home = () => {
@@ -415,7 +414,64 @@ const Home = () => {
       </section>
 
       {/* Footer */}
-      <Footer />
+      <footer className="bg-slate-950 border-t border-white/5 py-16">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col items-center text-center">
+            <div className="flex items-center justify-center gap-2 mb-8">
+              <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                <Zap className="text-slate-950 w-6 h-6 fill-slate-950" />
+              </div>
+              <span className="text-2xl font-bold text-white">داعم <span className="text-emerald-500">ستور</span></span>
+            </div>
+
+            {/* Payment Methods */}
+            <div className="mb-12 w-full">
+              <div className="text-slate-500 text-[10px] md:text-xs font-bold mb-6 uppercase tracking-[0.2em]">طرق دفع آمنة</div>
+              <div className="flex flex-wrap justify-center items-center gap-2 md:gap-3">
+                <div className="bg-white/[0.03] border border-white/5 px-3 md:px-6 py-1.5 md:py-2.5 rounded-lg md:rounded-xl hover:bg-white/[0.06] transition-colors cursor-default group">
+                  <span className="text-white/60 group-hover:text-white transition-colors text-xs md:text-sm font-bold">ابل باي</span>
+                </div>
+
+                <div className="bg-white/[0.03] border border-white/5 px-3 md:px-6 py-1.5 md:py-2.5 rounded-lg md:rounded-xl hover:bg-white/[0.06] transition-colors cursor-default group">
+                  <span className="text-white/60 group-hover:text-white transition-colors text-xs md:text-sm font-bold">فيزا</span>
+                </div>
+
+                <div className="bg-white/[0.03] border border-white/5 px-3 md:px-6 py-1.5 md:py-2.5 rounded-lg md:rounded-xl hover:bg-white/[0.06] transition-colors cursor-default group">
+                  <span className="text-white/60 group-hover:text-white transition-colors text-xs md:text-sm font-bold">ماستر كارد</span>
+                </div>
+
+                <div className="bg-white/[0.03] border border-white/5 px-3 md:px-6 py-1.5 md:py-2.5 rounded-lg md:rounded-xl hover:bg-white/[0.06] transition-colors cursor-default group">
+                  <span className="text-white/60 group-hover:text-white transition-colors text-xs md:text-sm font-bold">مدى</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Business Legal Info */}
+            <div className="mb-6 flex flex-col items-center gap-3">
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[10px] md:text-xs text-slate-500">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold">رقم الضريبة:</span>
+                  <span className="text-slate-300 font-mono">312923423500003</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold">رقم السجل التجاري:</span>
+                  <span className="text-slate-300 font-mono">1010992342</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap justify-center gap-x-8 gap-y-4 text-sm font-medium text-slate-500">
+              <a href="/terms" className="hover:text-emerald-400 transition-colors">شروط الخدمة</a>
+              <a href="/privacy" className="hover:text-emerald-400 transition-colors">سياسة الخصوصية</a>
+              <a href="/refill" className="hover:text-emerald-400 transition-colors">طلب تعويض نقص</a>
+            </div>
+            
+            <div className="mt-12 text-slate-600 text-xs">
+              © {new Date().getFullYear()} داعم ستور. جميع الحقوق محفوظة.
+            </div>
+          </div>
+        </div>
+      </footer>
 
       <Modals />
     </div>
